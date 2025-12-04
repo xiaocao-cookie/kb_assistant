@@ -9,9 +9,9 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 def load_pdf(path: Path) -> List[Document]:
     """
-    分页加载 pdf 文件
+    分页加载 pdf 文件，将其转换为Document对象之后的元数据有 source 和 page
     :param path: pdf文件的路径
-    :return:
+    :return: langchain_core.documents下的 Document 对象的列表
     """
     reader = PdfReader(str(path))
     docs = []
@@ -26,9 +26,9 @@ def load_pdf(path: Path) -> List[Document]:
 
 def load_docx(path: Path) -> List[Document]:
     """
-    读取 docx 文件
+    读取 docx 文件, 将其转换为Document对象之后的元数据有 source
     :param path: word文件的路径
-    :return:
+    :return: langchain_core.documents下的 Document 对象的列表
     """
     d = docx.Document(str(path))
     text = "\n".join(p.text for p in d.paragraphs if p.text.strip())
@@ -36,9 +36,9 @@ def load_docx(path: Path) -> List[Document]:
 
 def load_docs(dir_path: str) -> List[Document]:
     """
-    读取某个目录下的文件，包括docx/doc, pdf, md, txt
+    读取某个目录下的文件，包括docx/doc, pdf, md, txt， md 和 txt 的元数据有 source
     :param dir_path: 目录路径
-    :return:
+    :return: langchain_core.documents下的 Document 对象的列表
     """
     p = Path(dir_path)
     docs: List[Document] = []
@@ -56,13 +56,50 @@ def split_docs(docs: List[Document]) -> List[Document]:
     """
     分割文档
     :param docs: 准备要分块的文档
-    :return:
+    :return: langchain_core.documents下的 Document 对象的列表
     """
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap
     )
     return splitter.split_documents(docs)
+
+
+def load_single_file(path: Path) -> List[Document]:
+    """
+    读取单个文件，将其处理为 langchain_core.documents 下的 Document 对象的列表
+    :param path: 文件路径
+    :return: langchain_core.document 的 Document 对象的列表
+    """
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        return load_pdf(path)
+    if suffix in [".docx", ".doc"]:
+        return load_docx(path)
+    if suffix in [".md", ".txt"]:
+        text = path.read_text(encoding="utf-8")
+        return [Document(page_content=text, metadata={"source": str(path)})] if text.strip() else []
+    return []
+
+
+def split_with_visibility(docs: List[Document],
+                          visibility: str,
+                          doc_id: str | None = None):
+    """
+    将传入的 docs 分块，并将 visibility 和 doc_id 作为元数据添加到每个分块中
+    :param docs: Document 列表
+    :param visibility:  可见性
+    :param doc_id:  文档id
+    :return: 添加了 visibility 和 doc_id 元数据的文件块
+    """
+    chunks = split_docs(docs)
+    for c in chunks:
+        c.metadata = dict(c.metadata or {})
+        c.metadata["visibility"] = visibility
+        if doc_id:
+            c.metadata["doc_id"] = doc_id
+    return chunks
+
 
 if __name__ == "__main__":
     docs = split_docs(load_docs("/home/supercao/PycharmProjects/kb_assistant/data/docs"))

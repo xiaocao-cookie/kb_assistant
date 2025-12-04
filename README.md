@@ -14,16 +14,28 @@ kb_assistant/
 |   |—— config.py                           配置     
 |   |—— deps.py
 |   |—— router_graph.py                     顶级路由
-
+|   |—— main.py                             主函数入口
 |—— data/                                   数据
-|   |——  chroma/                                向量数据库
 |   |——  docs/                                  语料库
 |       |—— 公司考勤管理制度.docx
 |       |—— 请假审批流程说明.docx
 |       |—— 公司薪酬管理制度.pdf
 |   |—— tests/                              测试代码
+|   |—— ui/                                 前端界面
+|       |—— streamlit_app.py
 ```
 
-...
+## 其他
+
+例如，修改requirements.txt，添加
+python-multipart==0.0.20
+aiofiles==24.1.0
+streamlit==1.40.2
+
+使用如下命令更新
+```bash
+pip install -U -r requirements.txt
+```
+
 
 
