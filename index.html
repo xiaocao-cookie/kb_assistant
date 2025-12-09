@@ -138,6 +138,8 @@
 
       <h2 style="margin-top:25px;">历史记录</h2>
       <div class="history" id="history"></div>
+      <button class="nav-btn red-btn" onclick="clearHistory()">🗑 清除历史记录</button>
+
 
       <h2 style="margin-top:25px;">系统设置</h2>
       <button class="nav-btn red-btn" onclick="window.location.href='reindex.html'">⟳ 重建索引</button>
@@ -176,6 +178,14 @@
       historyContainer.appendChild(div);
     });
   }
+
+  function clearHistory() {
+      if (!confirm("确定要清除所有历史记录吗？")) return;
+      historyData = [];
+      localStorage.removeItem("chat_history");
+      renderHistory();
+  }
+
 
   function appendMsg(role, text) {
     const wrapper = document.createElement("div");
@@ -230,7 +240,7 @@
     chatWindow.appendChild(loadingWrapper);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 
-    const payload = { text, session_id: sessionId, user_role: "public", requester: "webui" };
+    const payload = { text, session_id: "s1", user_role: "public", requester: "cao" };
 
     try {
       const resp = await fetch(API_URL, {
