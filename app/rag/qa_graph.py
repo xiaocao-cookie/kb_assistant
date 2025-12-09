@@ -3,7 +3,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.deps import get_vs, get_llm
-from app.rag.prompts import QA_USER, QA_SYSTEM
+from app.prompts.rag_prompt import QA_USER, QA_SYSTEM
 
 class QAState(TypedDict, total=False):
     question: str

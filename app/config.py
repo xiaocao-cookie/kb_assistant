@@ -15,11 +15,21 @@ class Setting(BaseModel):
     openai_api_key: str = os.getenv("DEEPSEEK_API_KEY", "")
     zhipu_api_key: str = os.getenv("ZHIPUAI_API_KEY", "")
     model_name: str = os.getenv("MODEL_NAME", "deepseek-chat")
+
+    # ================= chroma数据库 =========================
     chroma_dir: str = os.getenv("CHROMA_DIR", "./data/chroma")
     chroma_host: str = os.getenv("CHROMA_HOST", "localhost")
     chroma_port: int = int(os.getenv("CHROMA_PORT", "8000"))
     collection_name: str = os.getenv("COLLECTION_NAME", "knowledge_base")
+
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "800"))
     chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "120"))
+
+    # ================= MySql 数据库 =========================
+    MYSQL_HOST: str = os.getenv("MYSQL_HOST", "127.0.0.1")
+    MYSQL_PORT: int = int(os.getenv("MYSQL_PORT", "3306"))
+    MYSQL_USER: str = os.getenv("MYSQL_USER", "cao")
+    MYSQL_PASSWORD: str = os.getenv("MYSQL_PASSWORD", "123456")
+    MYSQL_DB: str = os.getenv("MYSQL_DB", "kb_assistant")
 
 settings = Setting()
