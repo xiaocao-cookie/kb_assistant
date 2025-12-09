@@ -10,8 +10,19 @@ import time
 import uuid
 from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs, batch_chunks
 import chromadb
-
+from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(title="Enterprise KB Assistant")
+
+
+# 允许跨域
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 或者指定你的前端地址 ["http://localhost:3000"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 DATA_DOCS_DIR = Path("../data/docs")
 DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)            # 若不存在 → 自动递归创建所有目录
 SESSIONS: dict[str, dict] = {}

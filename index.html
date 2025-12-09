@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Enterprise KB Assistant Chat</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #ffffff; }
+
+    #layout { display: flex; height: 100vh; }
+
+    .sidebar {
+      width: 260px;
+      background: #ffffff;
+      border-right: 1px solid #d0d7de;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+    }
+
+    .sidebar h2 { margin: 0 0 15px; font-size: 18px; color: #333; }
+
+    .nav-btn {
+      padding: 12px;
+      width: 100%;
+      border: none;
+      background: #f0f4ff;
+      color: #0052cc;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-bottom: 10px;
+      font-weight: bold;
+      transition: 0.2s ease;
+    }
+    .red-btn {
+      background: #ff4d4f;
+      color: #fff;
+    }
+
+    .red-btn:hover { background: #ff7875; }
+    .nav-btn:hover { background: #d7e4ff; }
+
+    .upload {
+      padding: 12px;
+      margin-top: 10px;
+      background: #e9f7ef;
+      color: #2e7d32;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      border: none;
+      transition: 0.2s ease;
+    }
+
+    .upload:hover { background: #c8e6c9; }
+
+    .history { margin-top: 20px; flex: 1; overflow-y: auto; border-top: 1px solid #eee; padding-top: 10px; }
+
+    .history-item {
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: #f9f9f9;
+      margin-bottom: 8px;
+      cursor: pointer;
+      border: 1px solid #e2e2e2;
+      transition: 0.15s;
+    }
+    .history-item:hover { background: #ececec; }
+
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      max-width: 900px;
+      margin: auto;
+      background: #ffffff;
+      border-left: 1px solid #ddd;
+      border-right: 1px solid #ddd;
+      padding: 0 20px;
+    }
+
+    .chat-window { flex: 1; overflow-y: auto; padding: 20px 0; }
+
+    .msg-box { display: flex; margin: 14px 0; gap: 10px; align-items: flex-start; }
+
+    .msg { max-width: 70%; padding: 12px 16px; border-radius: 10px; line-height: 1.5; display: flex; align-items: center; gap: 10px; }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background-size: cover;
+      background-position: center;
+      flex-shrink: 0;
+    }
+
+    .user-box { justify-content: flex-end; }
+    .user { background: #0084ff; color: white; border-bottom-left-radius: 2px; order: 1; }
+    .user-avatar { background-image: url('https://cdn-icons-png.flaticon.com/512/747/747376.png'); order: 2; }
+
+    .bot-box { justify-content: flex-start; }
+    .bot { background: #f2f4f7; border: 1px solid #ddd; border-bottom-right-radius: 2px; }
+    .bot-avatar { background-image: url('https://cdn-icons-png.flaticon.com/512/4712/4712100.png'); }
+
+    .input-box {
+      display: flex;
+      padding: 16px 0;
+      background: transparent;
+    }
+
+    input {
+      flex: 1;
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 20px;
+      font-size: 14px;
+      background: #ffffff;
+    }
+
+    button.send {
+      margin-left: 10px;
+      padding: 12px 20px;
+      border: none;
+      background: #0084ff;
+      color: #fff;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div id="layout">
+    <div class="sidebar">
+      <h2>功能面板</h2>
+
+      <button class="nav-btn" onclick="newChat()">＋ 新建会话</button>
+
+      <h2 style="margin-top:25px;">历史记录</h2>
+      <div class="history" id="history"></div>
+
+      <h2 style="margin-top:25px;">系统设置</h2>
+      <button class="nav-btn red-btn" onclick="window.location.href='reindex.html'">⟳ 重建索引</button>
+      <button class="upload" onclick="uploadKB()">↑ 上传知识库</button>
+    </div>
+
+    <div class="chat-container" id="app">
+      <div class="chat-window" id="chatWindow"></div>
+
+      <div class="input-box">
+        <input id="input" type="text" placeholder="请输入内容并按回车..." />
+        <button class="send" onclick="sendMsg()">发送</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const API_URL = "http://127.0.0.1:8002/chat";
+
+  // 页面加载时生成 session_id
+  const sessionId = Math.random().toString(36).slice(2);
+  localStorage.setItem("session_id", sessionId);
+
+  const chatWindow = document.getElementById("chatWindow");
+  const historyContainer = document.getElementById("history");
+
+  // 初始化历史记录
+  let historyData = JSON.parse(localStorage.getItem("chat_history") || "[]");
+
+  function renderHistory() {
+    historyContainer.innerHTML = "";
+    historyData.forEach(item => {
+      const div = document.createElement("div");
+      div.className = "history-item";
+      div.textContent = item.text.slice(0, 20);
+      historyContainer.appendChild(div);
+    });
+  }
+
+  function appendMsg(role, text) {
+    const wrapper = document.createElement("div");
+    wrapper.className = `msg-box ${role}-box`;
+
+    const avatar = document.createElement("div");
+    avatar.className = `avatar ${role}-avatar`;
+
+    const bubble = document.createElement("div");
+    bubble.className = `msg ${role}`;
+    bubble.textContent = text;
+
+    if (role === 'user') {
+      wrapper.appendChild(bubble);
+      wrapper.appendChild(avatar);
+    } else {
+      wrapper.appendChild(avatar);
+      wrapper.appendChild(bubble);
+    }
+
+    chatWindow.appendChild(wrapper);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+  }
+
+  async function sendMsg() {
+    const input = document.getElementById("input");
+    const text = input.value.trim();
+    if (!text) return;
+
+    appendMsg("user", text);
+
+    // 保存到历史记录
+    historyData.push({ text });
+    localStorage.setItem("chat_history", JSON.stringify(historyData));
+    renderHistory();
+
+    input.value = "";
+
+    // 系统正在回复提示
+    const loadingWrapper = document.createElement("div");
+    loadingWrapper.className = `msg-box bot-box`;
+
+    const loadingAvatar = document.createElement("div");
+    loadingAvatar.className = `avatar bot-avatar`;
+
+    const loadingBubble = document.createElement("div");
+    loadingBubble.className = `msg bot`;
+    loadingBubble.textContent = "系统正在回复...";
+
+    loadingWrapper.appendChild(loadingAvatar);
+    loadingWrapper.appendChild(loadingBubble);
+    chatWindow.appendChild(loadingWrapper);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+
+    const payload = { text, session_id: sessionId, user_role: "public", requester: "webui" };
+
+    try {
+      const resp = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      loadingBubble.textContent = data.answer || "(无回应)";
+    } catch (err) {
+      loadingBubble.textContent = "请求失败: " + err;
+    }
+  }
+
+  document.getElementById("input").addEventListener("keydown", e => {
+    if (e.key === "Enter") sendMsg();
+  });
+
+  function newChat() {
+    location.reload();
+  }
+
+  async function uploadKB() {
+    const file = document.createElement("input");
+    file.type = "file";
+    file.onchange = async () => {
+      const form = new FormData();
+      form.append("file", file.files[0]);
+
+      try {
+        const resp = await fetch("http://127.0.0.1:8002/ingest", {
+          method: "POST",
+          body: form
+        });
+        const data = await resp.json();
+        alert("知识库上传完成：" + JSON.stringify(data));
+      } catch (err) {
+        alert("上传失败：" + err);
+      }
+    };
+    file.click();
+  }
+
+  // 页面加载渲染历史记录
+  renderHistory();
+</script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise KB Assistant - Reindex</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+            background: linear-gradient(to right, #29eac4, #4284db);
+            color: #ffffff;
+        }
+        .container {
+            max-width: 600px;
+            margin: 100px auto;
+            padding: 25px;
+            background: rgba(255, 255, 255, 0.1);  /* 半透明白色卡片 */
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 16px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+            text-align: center;
+            backdrop-filter: blur(10px);  /* 背景模糊，增强质感 */
+        }
+        h1 {
+            margin-bottom: 15px;
+            color: #ffffff;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.5);
+        }
+        button {
+            background-color: #ffffff;
+            color: #4284db;
+            border: 2px solid #ffffff;
+            border-radius: 12px;
+            padding: 12px 30px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            background-color: #4284db;
+            color: #ffffff;
+            border-color: #ffffff;
+            transform: scale(1.05);
+        }
+        .message {
+            margin-top: 20px;
+            font-size: 0.95rem;
+            color: #e0f7ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏢 Enterprise KB Assistant</h1>
+        <p class="message">点击按钮进行全量重建（清库+重建）</p>
+        <button id="reindexBtn">全量重建</button>
+        <div class="message" id="status"></div>
+    </div>
+
+    <script>
+        const API_BASE = "http://127.0.0.1:8002";
+
+        document.getElementById("reindexBtn").addEventListener("click", async () => {
+            // 弹出确认框
+            const confirmReindex = confirm("是否确定重建？重建的知识库为 public");
+            if (!confirmReindex) return;
+
+            const statusEl = document.getElementById("status");
+            statusEl.textContent = "处理中，请稍候...";
+            try {
+                const response = await fetch(`${API_BASE}/reindex`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ visibility_default: "public" }),
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    statusEl.textContent = `重建完成：chunks=${data.chunks}`;
+                } else {
+                    const text = await response.text();
+                    statusEl.textContent = `错误：${text}`;
+                }
+            } catch (err) {
+                statusEl.textContent = `请求失败：${err}`;
+            }
+        });
+    </script>
+</body>
+</html>
