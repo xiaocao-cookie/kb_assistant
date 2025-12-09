@@ -8,17 +8,20 @@ from typing import Optional
 from pathlib import Path
 import time
 import uuid
-from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs
+from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs, batch_chunks
 import chromadb
 
 app = FastAPI(title="Enterprise KB Assistant")
 DATA_DOCS_DIR = Path("../data/docs")
 DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)            # 若不存在 → 自动递归创建所有目录
+SESSIONS: dict[str, dict] = {}
 
 class ChatReq(BaseModel):
     text: str
     user_role: str = "public"
     requester: str = "anonymous"
+    mode: Optional[str] = None
+    session_id: Optional[str] = None
 
 class ChatResp(BaseModel):
     answer: str
@@ -32,7 +35,20 @@ def chat(req: ChatReq):
     :param req: 用户输入的问题
     :return: 大模型（使用RAG） 给出的回答
     """
-    out = router_graph.invoke(req.model_dump())
+    payload = req.model_dump()
+    sid = payload.get("session_id")
+
+    if sid and sid in SESSIONS:
+        prev = SESSIONS[sid]
+        merged = {**prev, **payload}
+        merged["text"] = payload.get("text")
+        payload = merged
+
+    out = router_graph.invoke(payload)
+
+    if sid:
+        SESSIONS[sid] = {**payload, **out}
+
     return {"answer": out["answer"]}
 
 @app.post("/ingest")
@@ -73,7 +89,8 @@ async def ingest(file: UploadFile = File(...),
     chunks = split_with_visibility(docs, visibility=visibility, doc_id=doc_id)          # 每一块带上可见性和文档id
 
     vs = get_vs()
-    vs.add_documents(chunks)                                                            # 存到 chromadb 中
+    for chunks in batch_chunks(docs, 64):
+        vs.add_documents(chunks)                                                            # 存到 chromadb 中
 
     return {
         "saved_as": str(save_path),

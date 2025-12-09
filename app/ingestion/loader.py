@@ -100,6 +100,13 @@ def split_with_visibility(docs: List[Document],
             c.metadata["doc_id"] = doc_id
     return chunks
 
+def batch_chunks(docs, batch_size):
+    """
+    分块添加文件
+    """
+    for i in range(0, len(docs), batch_size):
+        yield docs[i:i + batch_size]
+
 
 if __name__ == "__main__":
     docs = split_docs(load_docs("/home/supercao/PycharmProjects/kb_assistant/data/docs"))
