@@ -12,7 +12,6 @@ from app.deps import get_llm
 from app.workflows.leave.models import LeaveState
 from app.workflows.leave.rules import validate_leave
 
-
 SLOT_SYSTEM = (
     "你是企业HR请假助手。"
     "你的任务是从用户请假描述中抽取结构化信息。"
@@ -37,7 +36,12 @@ SLOT_USER = """请从下面文本中抽取字段，输出严格 JSON：
 """
 
 
-def _safe_json_load(s: str) -> Dict[str, Any]:
+def _safe_json_load(s: str) -> Dict[str , Any]:
+    """
+    将大模型返回的 json 转换为字典
+    :param s: json 字符串
+    :return: 字典
+    """
     if not s:
         return {}
     s = s.strip()
@@ -46,12 +50,17 @@ def _safe_json_load(s: str) -> Dict[str, Any]:
         if s.lower().startswith("json"):
             s = s[4:].strip()
     try:
-        return json.loads(s)
+        return json.loads(s)            # 将 json 字符串转换为字典
     except Exception:
         return {}
 
 
 def _safe_iso(s: Any) -> str | None:
+    """
+    将ISO格式的时间转为datetime对象
+    :param s: 时间
+    :return: datetime对象 或 None
+    """
     if not s or not isinstance(s, str):
         return None
     s = s.strip()
@@ -59,10 +68,15 @@ def _safe_iso(s: Any) -> str | None:
         datetime.fromisoformat(s)
         return s
     except Exception:
-        return None
+        print(f"e: {Exception.__name__}")
 
 
 def extract_slots_node(state: LeaveState) -> dict:
+    """
+    抽取槽位
+    :param state:
+    :return:
+    """
     llm = get_llm()
     text = state.get("text", "") or state.get("question", "") or ""
 
@@ -85,18 +99,27 @@ def extract_slots_node(state: LeaveState) -> dict:
 
 
 def validate_node(state: LeaveState) -> dict:
+    """
+    请假的规则校验
+    """
     req = state.get("req") or {}
     missing, violations = validate_leave(req, balance_days=5.0)
     return {"missing_fields": missing, "violations": violations, "req": req}
 
 
 def decide_next(state: LeaveState) -> str:
+    """
+    决定走信息补充还是确认请假信息
+    """
     if state.get("missing_fields") or state.get("violations"):
         return "need_info"
     return "confirm"
 
 
 def need_info_node(state: LeaveState) -> dict:
+    """
+    补充信息的提示
+    """
     missing = state.get("missing_fields") or []
     violations = state.get("violations") or []
 
@@ -110,6 +133,9 @@ def need_info_node(state: LeaveState) -> dict:
 
 
 def confirm_node(state: LeaveState) -> dict:
+    """
+    请假信息确认
+    """
     req = state.get("req") or {}
     ans = (
         "请确认你的请假信息：\n"
@@ -122,7 +148,11 @@ def confirm_node(state: LeaveState) -> dict:
     )
     return {"answer": ans}
 
+
 def decide_confirm(state: LeaveState) -> str:
+    """
+    是否确认请假
+    """
     text = (state.get("text") or "").strip().lower()
     if text in {"确认", "确定", "yes", "ok", "submit"}:
         return "create"
@@ -130,11 +160,20 @@ def decide_confirm(state: LeaveState) -> str:
 
 
 def create_leave_node(state: LeaveState) -> dict:
+    """
+    生成请假单（这里是虚拟的请假单，并没有连接数据库）
+    :param state:
+    :return:
+    """
     leave_id = "LV-" + uuid.uuid4().hex[:8]
     return {"leave_id": leave_id, "answer": f"已为你提交请假申请，编号 {leave_id}，等待审批。"}
 
 
 def build_leave_graph():
+    """
+    构建请假图
+    :return: 已编译的图对象
+    """
     g = StateGraph(LeaveState)
 
     g.add_node("extract", extract_slots_node)
@@ -149,13 +188,19 @@ def build_leave_graph():
     g.add_conditional_edges(
         "validate",
         decide_next,
-        {"need_info": "need_info", "confirm": "confirm"},
+        {
+            "need_info": "need_info",
+            "confirm": "confirm"
+        }
     )
 
     g.add_conditional_edges(
         "confirm",
         decide_confirm,
-        {"create": "create", "end": END},
+        {
+            "create": "create",
+            "end": END
+        }
     )
 
     g.add_edge("need_info", END)

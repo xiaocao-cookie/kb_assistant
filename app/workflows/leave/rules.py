@@ -7,9 +7,9 @@ def validate_leave(
 ) -> Tuple[List[str], List[str]]:
     """
     请假规则校验
-    :param req:
-    :param balance_days:
-    :return:
+    :param req: 请求参数，对应于 /app/workflows/leave/models.py 中的 LeaveRequest
+    :param balance_days: 假期余额
+    :return: 缺失字段 和 违反的规则说明
     """
     missing = []
     violations = []
@@ -21,9 +21,9 @@ def validate_leave(
     if missing:
         return missing, violations
 
-    # parse time
+    # 解析时间
     try:
-        # 所有前台拿来的内容全都是str类型，即便是数字，也是str类型
+        # 将一个 ISO 时间转换为 python 的 datetime 对象
         start = datetime.fromisoformat(req["start_time"])
         end = datetime.fromisoformat(req["end_time"])
     except Exception:
@@ -41,7 +41,7 @@ def validate_leave(
     if leave_type == "annual":
         if duration > balance_days:
             violations.append(f"年假余额不足（剩余 {balance_days} 天）")
-        # 提前 1 个工作日（简单版：提前 24h）
+        # 请假必须提前 1 个工作日申请
         if start < datetime.now() + timedelta(days=1):
             violations.append("年假需至少提前 1 个工作日提交")
 
