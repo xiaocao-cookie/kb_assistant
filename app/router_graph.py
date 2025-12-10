@@ -18,10 +18,9 @@ class RouterState(TypedDict, total=False):
     # Leave_Graph 所需信息
     requester: str
     req: dict
-    missing_fields: list[str]
-    violations: list[str]
+    missing_fields: List[str]
+    violations: List[str]
 
-    docs: list[Any]
     leave_id: str
 
 def decide_route(state: RouterState) -> str:
@@ -36,15 +35,17 @@ def decide_route(state: RouterState) -> str:
     if mode in {"leave", "hr"}:
         return "leave"
 
-    # todo: 关键词路由的解释
+    # 关键词路由
     text = (state.get("text") or state.get("question") or "").lower()
-    if any(k in text for k in ["请假", "年假", "病假", "事假", "休假", "调休", "假期", "请一天假", "请半天假"]):
+    if any(k in text for k in ["请假", "年假", "病假", "事假", "休假", "调休", "假期", "请一天年假", "请半天假", "请一天假"]):
         return "leave"
 
     return "qa"
 
 def route_node(state: RouterState) -> dict:
-    return {"active_route": decide_route(state)}
+    print(f"------------------------{decide_route(state)}------------------------")
+    active = decide_route(state)
+    return {"active_route": active}
 
 def build_router_graph():
     """

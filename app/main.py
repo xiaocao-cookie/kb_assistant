@@ -12,7 +12,10 @@ import time
 import uuid
 from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs, batch_chunks
 import chromadb
-
+import json
+import redis
+from langchain_core.documents import Document
+import datetime
 app = FastAPI(title="Enterprise KB Assistant")
 
 app.add_middleware(
@@ -38,29 +41,64 @@ class ChatResp(BaseModel):
     answer: str
 
 
+r = redis.Redis(host="127.0.0.1", port=6379, decode_responses=True)
+
+def deep_merge(a: dict, b: dict) -> dict:
+    """深度合并字典，保留嵌套字段"""
+    result = a.copy()
+    for k, v in b.items():
+        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+            result[k] = deep_merge(result[k], v)
+        else:
+            result[k] = v
+    return result
+
+
+def serialize(obj):
+    """处理无法直接序列化的对象"""
+    if isinstance(obj, Document):
+        return {
+            "page_content": obj.page_content,
+            "metadata": obj.metadata,
+        }
+    elif isinstance(obj, datetime.datetime):
+        return obj.isoformat()
+    elif isinstance(obj, list):
+        return [serialize(i) for i in obj]
+    elif isinstance(obj, dict):
+        return {k: serialize(v) for k, v in obj.items()}
+    else:
+        return obj
+
 @app.post("/chat", response_model=ChatResp)
 def chat(req: ChatReq):
-    """
-    聊天接口，底层使用 langgraph
+    """ 聊天接口，底层使用 langgraph
 
     :param req: 用户输入的问题
-    :return: 大模型（使用RAG） 给出的回答
+    :return: 大模型（使用RAG）给出的回答
     """
     payload = req.model_dump()
     sid = payload.get("session_id")
 
-    if sid and sid in SESSIONS:
-        prev = SESSIONS[sid]
-        merged = {**prev, **payload}
-        merged["text"] = payload.get("text")
-        payload = merged
+    if not sid:
+        return {"answer": "缺少 session_id"}
+
+    # 从 Redis 读取上一次状态
+    prev_state = r.get(f"session:{sid}")
+    if prev_state:
+        try:
+            prev_state = json.loads(prev_state)
+            payload = deep_merge(prev_state, payload)
+        except Exception:
+            # 防止 json 解析失败
+            print(f"e: {Exception.__name__}")
 
     out = router_graph.invoke(payload)
 
-    if sid:
-        SESSIONS[sid] = {**payload, **out}
+    to_save = serialize(deep_merge(payload, out))
+    r.set(f"session:{sid}", json.dumps(to_save, ensure_ascii=False))
 
-    return {"answer": out["answer"]}
+    return {"answer": out.get("answer", "没有生成回答")}
 
 @app.post("/ingest")
 async def ingest(file: UploadFile = File(...),
