@@ -26,6 +26,24 @@ class RouterState(TypedDict, total=False):
 def decide_route(state: RouterState) -> str:
     mode = (state.get("mode") or "").lower().strip()
 
+    # 关键词路由
+    text = (state.get("text") or state.get("question") or "").lower()
+    qa_keywords = [
+        "还能", "还可以", "其他问题", "帮我查", "我想问", "请问", "可以告诉我", "想咨询"
+    ]
+
+    leave_keywords = [
+        "请假", "年假", "病假", "事假", "休假", "调休", "假期", "请一天年假", "请半天假", "请一天假"
+    ]
+
+    # 转 qa
+    if any(k in text for k in qa_keywords):
+        return "qa"
+
+    # 转 leave
+    if any(k in text for k in leave_keywords):
+        return "leave"
+
     active = (state.get("active_route") or "").lower().strip()
     if active == "leave" and mode not in {"qa", "rag", "kb"}:
         return "leave"
@@ -33,11 +51,6 @@ def decide_route(state: RouterState) -> str:
     if mode in {"qa", "rag", "kb"}:
         return "qa"
     if mode in {"leave", "hr"}:
-        return "leave"
-
-    # 关键词路由
-    text = (state.get("text") or state.get("question") or "").lower()
-    if any(k in text for k in ["请假", "年假", "病假", "事假", "休假", "调休", "假期", "请一天年假", "请半天假", "请一天假"]):
         return "leave"
 
     return "qa"

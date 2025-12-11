@@ -21,9 +21,8 @@ def validate_leave(
     if missing:
         return missing, violations
 
-    # parse time
+    # 时间解析
     try:
-        # 所有前台拿来的内容全都是str类型，即便是数字，也是str类型
         start = datetime.fromisoformat(req["start_time"])
         end = datetime.fromisoformat(req["end_time"])
     except Exception:

@@ -14,8 +14,6 @@ from app.ingestion.loader import load_single_file, split_with_visibility, load_d
 import chromadb
 import json
 import redis
-from langchain_core.documents import Document
-import datetime
 app = FastAPI(title="Enterprise KB Assistant")
 
 app.add_middleware(
@@ -28,7 +26,6 @@ app.add_middleware(
 
 DATA_DOCS_DIR = Path("../data/docs")
 DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)            # 若不存在 → 自动递归创建所有目录
-SESSIONS: dict[str, dict] = {}
 
 class ChatReq(BaseModel):
     text: str
@@ -41,34 +38,24 @@ class ChatResp(BaseModel):
     answer: str
 
 
-r = redis.Redis(host="127.0.0.1", port=6379, decode_responses=True)
-
-def deep_merge(a: dict, b: dict) -> dict:
-    """深度合并字典，保留嵌套字段"""
-    result = a.copy()
-    for k, v in b.items():
-        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
-            result[k] = deep_merge(result[k], v)
-        else:
-            result[k] = v
-    return result
+r = redis.Redis(host="127.0.0.1", port=6379, db=0, decode_responses=True)
 
 
 def serialize(obj):
-    """处理无法直接序列化的对象"""
-    if isinstance(obj, Document):
+    # 处理 LangChain Document
+    if hasattr(obj, "page_content") and hasattr(obj, "metadata"):
         return {
             "page_content": obj.page_content,
             "metadata": obj.metadata,
         }
-    elif isinstance(obj, datetime.datetime):
-        return obj.isoformat()
-    elif isinstance(obj, list):
+    # list
+    if isinstance(obj, list):
         return [serialize(i) for i in obj]
-    elif isinstance(obj, dict):
+    # dict
+    if isinstance(obj, dict):
         return {k: serialize(v) for k, v in obj.items()}
-    else:
-        return obj
+    # 其他对象，直接转为字符串以防止崩溃
+    return str(obj)
 
 @app.post("/chat", response_model=ChatResp)
 def chat(req: ChatReq):
@@ -80,25 +67,21 @@ def chat(req: ChatReq):
     payload = req.model_dump()
     sid = payload.get("session_id")
 
-    if not sid:
-        return {"answer": "缺少 session_id"}
-
-    # 从 Redis 读取上一次状态
-    prev_state = r.get(f"session:{sid}")
-    if prev_state:
-        try:
-            prev_state = json.loads(prev_state)
-            payload = deep_merge(prev_state, payload)
-        except Exception:
-            # 防止 json 解析失败
-            print(f"e: {Exception.__name__}")
+    if sid:
+        prev = r.get(f"session:{sid}")
+        if prev:
+            prev = json.loads(prev)                     # 将json字符串转为dict对象
+        else:
+            prev = {}
+        merged = {**prev, **payload, "text": payload.get("text")}
+        payload = merged
 
     out = router_graph.invoke(payload)
 
-    to_save = serialize(deep_merge(payload, out))
-    r.set(f"session:{sid}", json.dumps(to_save, ensure_ascii=False))
+    if sid:
+        r.set(f"session:{sid}", json.dumps({**payload, **out}, ensure_ascii=False, default=serialize))
 
-    return {"answer": out.get("answer", "没有生成回答")}
+    return {"answer": out["answer"]}
 
 @app.post("/ingest")
 async def ingest(file: UploadFile = File(...),
