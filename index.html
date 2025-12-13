@@ -280,7 +280,51 @@
     const payload = { text, session_id: sessionId, user_role: "public", requester: "cao" };
     alert("当前请求参数字段：\n\n" + JSON.stringify(payload, null, 2));
   }
-  function uploadKB() { alert("上传知识库"); }
+
+function uploadKB() {
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+
+    fileInput.onchange = async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const visibility = prompt("请输入可见性（public / internal）", "public");
+      if (!visibility) return;
+
+      const docId = prompt("请输入文档 ID（可留空）", "");
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("visibility", visibility);
+      if (docId) formData.append("doc_id", docId);
+
+      try {
+        const resp = await fetch(INGEST_URL, {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await resp.json();
+        if (!resp.ok) {
+          alert("上传失败：" + (data.detail || "未知错误"));
+          return;
+        }
+
+        alert(
+          "上传成功！\n\n" +
+          "文件路径：" + data.saved_as + "\n" +
+          "可见性：" + data.visibility + "\n" +
+          "切块数量：" + data.chunks
+        );
+      } catch (err) {
+        alert("上传请求失败：" + err);
+      }
+    };
+
+    fileInput.click();
+  }
+
 </script>
 </body>
 </html>

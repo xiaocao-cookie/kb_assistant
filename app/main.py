@@ -12,8 +12,8 @@ import time
 import uuid
 from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs, batch_chunks
 import chromadb
-import json
-import redis
+from app.db_ops.redis_session import load_session, save_session
+
 app = FastAPI(title="Enterprise KB Assistant")
 
 app.add_middleware(
@@ -36,26 +36,9 @@ class ChatReq(BaseModel):
 
 class ChatResp(BaseModel):
     answer: str
+    session_id: Optional[str] = None
+    active_route: Optional[str] = None
 
-
-r = redis.Redis(host="127.0.0.1", port=6379, db=0, decode_responses=True)
-
-
-def serialize(obj):
-    # 处理 LangChain Document
-    if hasattr(obj, "page_content") and hasattr(obj, "metadata"):
-        return {
-            "page_content": obj.page_content,
-            "metadata": obj.metadata,
-        }
-    # list
-    if isinstance(obj, list):
-        return [serialize(i) for i in obj]
-    # dict
-    if isinstance(obj, dict):
-        return {k: serialize(v) for k, v in obj.items()}
-    # 其他对象，直接转为字符串以防止崩溃
-    return str(obj)
 
 @app.post("/chat", response_model=ChatResp)
 def chat(req: ChatReq):
@@ -65,23 +48,26 @@ def chat(req: ChatReq):
     :return: 大模型（使用RAG）给出的回答
     """
     payload = req.model_dump()
-    sid = payload.get("session_id")
+    text = payload.get("text") or payload.get("question") or ""
+    sid = payload.get("session_id") or f"sid-{uuid.uuid4().hex[:10]}"
 
-    if sid:
-        prev = r.get(f"session:{sid}")
-        if prev:
-            prev = json.loads(prev)                     # 将json字符串转为dict对象
-        else:
-            prev = {}
-        merged = {**prev, **payload, "text": payload.get("text")}
+    payload["session_id"] = sid
+
+    prev_state = load_session(sid)
+    if prev_state:
+        merged = {**prev_state, **payload, "text": text}
         payload = merged
 
     out = router_graph.invoke(payload)
 
-    if sid:
-        r.set(f"session:{sid}", json.dumps({**payload, **out}, ensure_ascii=False, default=serialize))
+    new_state = {**payload, **out}
+    save_session(sid, new_state)
 
-    return {"answer": out["answer"]}
+    return {
+        "answer": out.get("answer"),
+        "session_id": sid,
+        "active_route": new_state.get("active_route"),
+    }
 
 @app.post("/ingest")
 async def ingest(file: UploadFile = File(...),
