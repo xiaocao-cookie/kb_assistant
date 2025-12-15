@@ -9,7 +9,7 @@ class Setting(BaseModel):
     基本的配置：
         包含
         apikey/调用的模型/chroma数据库的目录/chroma启动的主机和端口/chroma数据库的集合名称/
-        块大小和块折叠
+        块大小和块折叠...
     """
     base_url: str = 'https://api.deepseek.com/v1'
     openai_api_key: str = os.getenv("DEEPSEEK_API_KEY", "")

@@ -33,7 +33,34 @@ def decide_route(state: RouterState) -> str:
     ]
 
     leave_keywords = [
-        "请假", "年假", "病假", "事假", "休假", "调休", "假期", "请一天年假", "请半天假", "请一天假"
+        "请假", "年假", "病假", "事假", "休假", "调休", "假期", "请一天年假", "请半天假", "请一天假", "审批通过"
+    ]
+
+    approve_keywords = [
+        "审批通过",
+        "批准",
+        "同意",
+        "同意请假",
+        "批准请假",
+        "通过请假",
+        "审批同意",
+        "已批准",
+        "通过审批",
+        "批了",
+        "同意了",
+    ]
+
+    reject_keywords = [
+        "驳回",
+        "拒绝",
+        "不批准",
+        "不同意",
+        "审批拒绝",
+        "拒批",
+        "打回",
+        "否决",
+        "拒绝请假",
+        "驳回请假",
     ]
 
     # 转 qa
@@ -43,6 +70,13 @@ def decide_route(state: RouterState) -> str:
     # 转 leave
     if any(k in text for k in leave_keywords):
         return "leave"
+
+    if any(k in text for k in approve_keywords):
+        return "leave"
+
+    if any(k in text for k in reject_keywords):
+        return "leave"
+
 
     active = (state.get("active_route") or "").lower().strip()
     if active == "leave" and mode not in {"qa", "rag", "kb"}:
