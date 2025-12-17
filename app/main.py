@@ -1,3 +1,8 @@
+import time
+import uuid
+from typing import Optional
+from pathlib import Path
+
 import uvicorn
 from fastapi import FastAPI, UploadFile, Form, HTTPException, File
 from pydantic import BaseModel
@@ -6,15 +11,14 @@ from starlette.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.deps import get_vs
 from app.router_graph import router_graph
-from typing import Optional
-from pathlib import Path
-import time
-import uuid
 from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs, batch_chunks
-import chromadb
 from app.db_ops.redis_session import load_session, save_session
+from app.auth import auth_router
+
+import chromadb
 
 app = FastAPI(title="Enterprise KB Assistant")
+app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
