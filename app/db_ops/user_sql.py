@@ -1,4 +1,7 @@
 from app.db_ops.conn_pool import get_conn
+from app.api.auth_api import RegisterReq
+from app.security import hash_password
+
 from typing import List, Set
 from datetime import datetime, timezone
 
@@ -75,3 +78,37 @@ def update_last_login(user_id) -> bool:
         with conn.cursor() as cur:
             cur.execute(sql, (datetime.now(timezone.utc), user_id))
             return cur.rowcount == 1
+
+
+def create_user(user: RegisterReq) -> dict:
+    """
+    使用前端传过来的 user 新建用户并赋予 public 权限
+    :param user: 用户注册的请求体
+    :return: 创建好的用户
+    """
+    password_hash = hash_password(user.password)
+    sql = """
+          INSERT INTO users (username, email, phone, password_hash, full_name, is_active, is_super_admin)
+          VALUES (%s, %s, %s, %s, %s, 1, 0)
+          """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (
+                user.username,
+                user.email,
+                user.phone,
+                password_hash,
+                user.full_name
+            ))
+            user_id = cur.lastrowid             # 获取上一行的自增主键，只有主键自增时有效
+
+    auth_role_sql = """
+    INSERT IGNORE INTO user_roles (user_id, role_id)
+    SELECT %s, r.id FROM roles r where r.code = 'public'
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(auth_role_sql, (user_id, ))
+
+    u = get_user_by_id(user_id)
+    return u

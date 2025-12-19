@@ -13,12 +13,16 @@ from app.deps import get_vs
 from app.router_graph import router_graph
 from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs, batch_chunks
 from app.db_ops.redis_session import load_session, save_session
-from app.auth import auth_router
+from app.api.auth_api import auth_router
+from app.api.rbac_api import rbac_roles_router, rbac_users_router
 
 import chromadb
 
 app = FastAPI(title="Enterprise KB Assistant")
 app.include_router(auth_router)
+app.include_router(rbac_roles_router)
+app.include_router(rbac_users_router)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,7 +50,8 @@ class ChatResp(BaseModel):
 
 @app.post("/chat", response_model=ChatResp)
 def chat(req: ChatReq):
-    """ 聊天接口，底层使用 langgraph
+    """
+    聊天接口，底层使用 langgraph
 
     :param req: 用户输入的问题
     :return: 大模型（使用RAG）给出的回答
