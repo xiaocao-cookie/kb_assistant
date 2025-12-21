@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 
 from app.model.rbac_model import SetRolePermsReq, SetUserRolesReq
-from app.perm import require_permission
+from app.service.rbac_service import require_permission
 from app.constants.rbac import Permission
 from app.db_ops.rbac_sql import (
     list_roles,

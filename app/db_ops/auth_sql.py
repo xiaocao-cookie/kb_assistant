@@ -1,6 +1,6 @@
 from app.db_ops.conn_pool import get_conn
 from app.api.auth_api import RegisterReq
-from app.security import hash_password
+from app.service.auth_service import hash_password
 
 from typing import List, Set
 from datetime import datetime, timezone
