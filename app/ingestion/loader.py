@@ -1,10 +1,12 @@
 from typing import List
-from langchain_core.documents import Document
 from pathlib import Path
+
+from langchain_core.documents import Document
 from pypdf import PdfReader
 import docx
-from app.config import settings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.config import settings
 
 
 def load_pdf(path: Path) -> List[Document]:
@@ -24,6 +26,7 @@ def load_pdf(path: Path) -> List[Document]:
             ))
     return docs
 
+
 def load_docx(path: Path) -> List[Document]:
     """
     读取 docx 文件, 将其转换为Document对象之后的元数据有 source
@@ -33,6 +36,7 @@ def load_docx(path: Path) -> List[Document]:
     d = docx.Document(str(path))
     text = "\n".join(p.text for p in d.paragraphs if p.text.strip())
     return [Document(page_content=text, metadata={"source": str(path)})] if text else []
+
 
 def load_docs(dir_path: str) -> List[Document]:
     """
@@ -51,6 +55,7 @@ def load_docs(dir_path: str) -> List[Document]:
             docs.append(Document(page_content=f.read_text(encoding="utf-8"),
                                  metadata={"source": str(f)}))
     return docs
+
 
 def split_docs(docs: List[Document]) -> List[Document]:
     """
@@ -84,21 +89,28 @@ def load_single_file(path: Path) -> List[Document]:
 
 def split_with_visibility(docs: List[Document],
                           visibility: str,
-                          doc_id: str | None = None):
+                          doc_id: str | None = None,
+                          extra_meta: dict | None = None) -> List[Document]:
     """
     将传入的 docs 分块，并将 visibility 和 doc_id 作为元数据添加到每个分块中
     :param docs: Document 列表
     :param visibility:  可见性
     :param doc_id:  文档id
+    :param extra_meta: 额外的元数据
     :return: 添加了 visibility 和 doc_id 元数据的文件块
     """
     chunks = split_docs(docs)
+    extra_metadata = dict(extra_meta or {})
     for c in chunks:
         c.metadata = dict(c.metadata or {})
         c.metadata["visibility"] = visibility
         if doc_id:
             c.metadata["doc_id"] = doc_id
+        for k, v in extra_metadata.items():
+            if v:
+                c.metadata[k] = v
     return chunks
+
 
 def batch_chunks(docs, batch_size):
     """

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Header, Depends, HTTPException, status
 
 from app.model.auth_model import UserInDB, LoginReq, RegisterReq, TokenResp
-from app.service.auth_service import verify_password, create_access_token, decode_token
+from app.service.auth_service import verify_password, create_access_token, decode_token, extend_token_exp
 from app.db_ops.auth_sql import get_user_by_id, get_user_by_username, update_last_login, create_user
 
 auth_router = APIRouter(prefix="/auth")
@@ -79,7 +79,7 @@ def register(req: RegisterReq):
 
 
 @auth_router.post("/login", response_model=TokenResp)
-def login(req: LoginReq):
+def login(req: LoginReq, authorization: str | None = Header(default=None)):
     """ 用户登录 """
     user = get_user_by_username(req.username)
     if not user:
@@ -91,12 +91,17 @@ def login(req: LoginReq):
     if not user.get("is_active"):
         raise HTTPException(status_code=403, detail="用户未激活")
 
+    payload = {"sub": str(user["id"]), "name": user["username"]}
+    if not authorization:
+        token = create_access_token(payload)
+    else:
+        token = extend_token_exp(authorization.split(" ")[1])
+
+
     ok = update_last_login(int(user["id"]))
     if not ok:
         raise HTTPException(status_code=500, detail="数据更新失败")
 
-    payload = {"sub": str(user["id"]), "name": user["username"]}
-    token = create_access_token(payload)
     return TokenResp(access_token=token)
 
 

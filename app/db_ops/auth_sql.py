@@ -70,7 +70,6 @@ def update_last_login(user_id) -> bool:
     :param user_id: 用户id
     :return: 是否更新成功
     """
-    # todo： 每次登录后再重新刷新一下 token 的有效期，有效期根据此时间增加 timedelta
     sql = """
     UPDATE users SET last_login_at = %s WHERE id = %s
     """

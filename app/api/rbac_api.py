@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from typing import Optional
 
-from app.model.rbac_model import SetRolePermsReq, SetUserRolesReq
+from app.model.rbac_model import SetRolePermsReq, SetUserRolesReq, RoleReq
 from app.service.rbac_service import require_permission
 from app.constants.rbac import Permission
 from app.db_ops.rbac_sql import (
@@ -12,7 +12,8 @@ from app.db_ops.rbac_sql import (
     set_role_permissions,
     find_user_id,
     get_user_roles,
-    set_user_roles
+    set_user_roles,
+    set_roles
 )
 
 
@@ -37,6 +38,12 @@ rbac_users_router = APIRouter(
 def api_list_roles():
     """ 列出所有角色 """
     return {"roles": list_roles()}
+
+@rbac_roles_router.post("/set_roles")
+def api_set_roles(role_req: RoleReq):
+    """ 根据 role_code 新建角色 """
+    set_roles(role_req)
+    return {"success": "角色新建成功", "role_code": f"{role_req.code}"}
 
 
 @rbac_roles_router.get("/list_permissions")

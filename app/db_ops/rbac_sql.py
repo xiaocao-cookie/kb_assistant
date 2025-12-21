@@ -1,4 +1,5 @@
 from app.db_ops.conn_pool import get_conn
+from app.model.rbac_model import RoleReq
 
 from typing import Optional
 
@@ -98,6 +99,31 @@ def list_roles() -> list[dict]:
             return cur.fetchall()
 
 
+def set_roles(role_model: RoleReq) -> None:
+    """
+    根据 role_model 新建角色
+    :param role_model: 角色的 Model
+    :return: None
+    """
+    sql = """
+          INSERT IGNORE INTO roles (code, name, description, is_system)
+          VALUES (%s, %s, %s, %s)
+          """
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute(sql, (
+                    role_model.code,
+                    role_model.name,
+                    role_model.description,
+                    role_model.is_system
+                ))
+            except Exception:
+                raise
+
+
+
 def list_module_permissions(module: Optional[str] = None) -> list[dict]:
     """
     根据  module 列出所有的权限
@@ -149,10 +175,9 @@ def set_role_permissions(role_code: str, perm_codes: list[str]) -> None:
     :param perm_codes: 权限编码的列表
     :return: None
     """
-    # todo： 考虑新加一个方法，用于新增角色并新增权限
     role_id = _get_role_id(role_code)
     if role_id is None:
-        raise ValueError(f"系统中无此 {role_code} 角色")
+        raise ValueError(f"系统中无此 {role_code} 角色, 请先新建此 {role_code} 角色")
 
     perm_codes = sorted(set([p.strip() for p in (perm_codes or []) if p and p.strip()]))
 
