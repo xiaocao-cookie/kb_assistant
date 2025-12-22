@@ -4,7 +4,10 @@ from app.model.auth_model import UserInDB, LoginReq, RegisterReq, TokenResp
 from app.service.auth_service import verify_password, create_access_token, decode_token, extend_token_exp
 from app.db_ops.auth_sql import get_user_by_id, get_user_by_username, update_last_login, create_user
 
-auth_router = APIRouter(prefix="/auth")
+auth_router = APIRouter(
+    prefix="/auth",
+    tags=["用户认证"]
+)
 
 
 def get_current_user(authorization: str | None = Header(default=None)) -> UserInDB:

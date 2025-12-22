@@ -280,6 +280,7 @@
     const payload = { text, session_id: sessionId, user_role: "public", requester: "cao" };
     alert("当前请求参数字段：\n\n" + JSON.stringify(payload, null, 2));
   }
+const INGEST_URL = "http://127.0.0.1:8002/kb/ingest";
 
 function uploadKB() {
     const fileInput = document.createElement("input");

@@ -46,21 +46,16 @@ def _raise_403(detail: str) -> None:
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
-def require_permission(subject: Any, required_perm: str | None = None) -> Callable | None:
+def require_permission(perm_code: Any) -> Callable | None:
     """
-    权限校验，适用于依赖注入和立即校验两种场景
+    权限校验，适用于依赖注入
 
-    :param subject:
-            - str: 表示权限编码，用于依赖注入，且 required_perm 为 None 时才生效
-            - UserInDB / dict: 代表用户，校验用户是否有对应的权限
-    :param required_perm: 待校验的权限编码，当 subject 不为 str 时必填
+    :param perm_code: 权限编码
     :return:
         - Callable: 用于依赖注入的 Depends 函数
         - None: 校验通过放行，否则引发异常
     """
-    # todo： 考虑是否拆成两个函数
-    if isinstance(subject, str) and required_perm is None:
-        perm_code = subject
+    if isinstance(perm_code, str):
 
         def _checker(current_user: UserInDB = Depends(get_current_user)):
             if getattr(current_user, "is_super_admin", False):
@@ -71,24 +66,6 @@ def require_permission(subject: Any, required_perm: str | None = None) -> Callab
 
         return _checker
 
-    user = subject
-    perm_code = required_perm
-    if not perm_code or not isinstance(perm_code, str):
-        raise TypeError(f"{perm_code} 必须是 str")
-
-    if isinstance(user, dict):
-        if user.get("is_super_admin"):
-            return None
-        perm_set = _resolve_perms(user_id=user.get("user_id"), perms=user.get("permissions"))
-        if perm_code not in perm_set:
-            _raise_403(f"无 {perm_code} 权限")
-        return None
-
-    if getattr(user, "is_super_admin", False):
-        return None
-    perm_set = _resolve_perms(user=user)
-    if perm_code not in perm_set:
-        _raise_403(f"无 {perm_code} 权限")
     return None
 
 

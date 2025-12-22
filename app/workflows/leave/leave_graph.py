@@ -26,6 +26,7 @@ from app.db_ops.leave_sql import (
     reject_leave_request,
     insert_annual_leave_request
 )
+from app.constants.rbac import Permission
 
 
 def _safe_json_load(s: str) -> Dict[str , Any]:
@@ -108,6 +109,27 @@ def _extract_limit(text: str, default: int = 5) -> int:
     return default
 
 
+def _perms(state: LeaveState) -> set[str]:
+    """
+    获取 state 中的权限并将其转换为 set
+    """
+    return set(state.get("permissions") or [])
+
+
+def _has_perm(state: LeaveState, code: str) -> bool:
+    """
+    判断 code 是否在 state 中的 permission 集合里
+    """
+    if state.get("is_super_admin"):
+        return True
+    return code in _perms(state)
+
+
+def _deny(code: str) -> dict:
+    """ 权限拒绝 """
+    return {"answer": f"你没有 {code} 权限，请联系管理员"}
+
+
 def intent_node(state: LeaveState) -> dict:
     return {}
 
@@ -155,10 +177,21 @@ def query_leave_node(state: LeaveState) -> dict:
     if not row:
         return {"answer": f"未找到编号为 {leave_id} 的请假申请"}
 
+    me = state.get("requester", "anonymous")
+    owner = row.get("requester")
+
+    if owner == me:
+        if not _has_perm(state, Permission.PERM_LEAVE_VIEW_SELF):
+            return _deny(Permission.PERM_LEAVE_VIEW_SELF)
+    else:
+        if not _has_perm(state, Permission.PERM_LEAVE_VIEW_ALL):
+            return _deny(Permission.PERM_LEAVE_VIEW_ALL)
+
     return {
         "leave_id": leave_id,
         "answer": (
             f"请假单 {leave_id} 当前状态：{row['status']}\n"
+            f"申请人：{row['requester']}\n"
             f"类型：{row['leave_type']}\n"
             f"开始：{row['start_time']}\n"
             f"结束：{row['end_time']}\n"
@@ -170,25 +203,37 @@ def query_leave_node(state: LeaveState) -> dict:
 
 def cancel_leave_node(state: LeaveState) -> dict:
     """
-    请假单取消
-    :param state:
-    :return:
+    取消请假单
     """
+    if _has_perm(state, Permission.PERM_LEAVE_CANCEL):
+        return _deny(Permission.PERM_LEAVE_CANCEL)
+
     text = state.get("text") or state.get("question") or ""
     leave_id = state.get("leave_id") or _extract_leave_id(text)
 
     if not leave_id:
         return {"answer": "请提供要取消的请假单编号。"}
 
+    row = get_leave_request(leave_id)
+    if not row:
+        return {"answer": f"未找到编号为 {leave_id} 的请假申请"}
+
+    me = state.get("requester", "anonymous")
+    if not state.get("is_super_admin") and row.get("requester") != me:
+        return {"answer": "只能取消自己的请假单"}
+
     ok = cancel_leave_request(leave_id)
     if not ok:
-        return {"answer": "取消失败：未找到，或单据不是待审批状态（PENDING）。"}
+        return {"answer": "取消失败：单据不是待审批状态（PENDING）。"}
 
     return {"leave_id": leave_id, "answer": f"已取消请假申请 {leave_id}。"}
 
 
 def list_leave_node(state: LeaveState) -> dict:
     """ 列出最近的请假记录 """
+    if not _has_perm(state, Permission.PERM_LEAVE_VIEW_SELF):
+        return _deny(Permission.PERM_LEAVE_VIEW_SELF)
+
     text = state.get("text") or state.get("question") or ""
     requester = state.get("requester", "anonymous")
     limit = _extract_limit(text, default=5)
@@ -209,6 +254,9 @@ def list_leave_node(state: LeaveState) -> dict:
 
 def modify_leave_node(state: LeaveState) -> dict:
     """ 修改请假单 """
+    if _has_perm(state, Permission.PERM_LEAVE_MODIFY):
+        return _deny(Permission.PERM_LEAVE_MODIFY)
+
     text = state.get("text") or state.get("question") or ""
     requester = state.get("requester", "anonymous")
 
@@ -221,6 +269,9 @@ def modify_leave_node(state: LeaveState) -> dict:
         return {"answer": f"未找到编号为 {leave_id} 的请假申请"}
     if old["status"] != "PENDING":
         return {"answer": f"{leave_id} 不是待审批状态，无法修改！当前的状态为: {old['status']}"}
+
+    if not state.get("is_super_admin") and old.get("requester") != requester:
+        return {"answer": "你只能修改自己的请假单"}
 
     base_req = {
         "leave_type": old["leave_type"],
@@ -310,10 +361,8 @@ def approve_leave_node(state: LeaveState) -> dict:
     """
     批准请假
     """
-
-    role = (state.get("user_role") or "").lower()
-    if role not in {"admin", "hr"}:
-        return {"answer": "你没有审批权限（需要 HR/Admin）"}
+    if not _has_perm(state, Permission.PERM_LEAVE_APPROVE):
+        return _deny(Permission.PERM_LEAVE_APPROVE)
 
     text = state.get("text") or state.get("question") or ""
     leave_id = state.get("leave_id") or _extract_leave_id(text)
@@ -331,10 +380,8 @@ def reject_leave_node(state: LeaveState) -> dict:
     """
     驳回请假
     """
-
-    role = (state.get("user_role") or "").lower()
-    if role not in {"admin", "hr"}:
-        return {"answer": "你没有审批权限（需要 HR/Admin）"}
+    if not _has_perm(state, Permission.PERM_LEAVE_REJECT):
+        return _deny(Permission.PERM_LEAVE_REJECT)
 
     text = state.get("text") or state.get("question") or ""
     leave_id = state.get("leave_id") or _extract_leave_id(text)
@@ -507,6 +554,9 @@ def create_leave_node(state: LeaveState) -> dict:
     :param state:
     :return:
     """
+    if not _has_perm(state, Permission.PERM_LEAVE_APPLY):
+        return _deny(Permission.PERM_LEAVE_APPLY)
+
     req = state.get("req") or {}
     leave_id = "LV-" + uuid.uuid4().hex[:8]
     req_to_save = {
