@@ -55,18 +55,14 @@ def require_permission(perm_code: Any) -> Callable | None:
         - Callable: 用于依赖注入的 Depends 函数
         - None: 校验通过放行，否则引发异常
     """
-    if isinstance(perm_code, str):
 
-        def _checker(current_user: UserInDB = Depends(get_current_user)):
-            if getattr(current_user, "is_super_admin", False):
-                return True
-            if perm_code not in _resolve_perms(user=current_user):
-                _raise_403(f"无 {perm_code} 权限")
+    def _checker(current_user: UserInDB = Depends(get_current_user)):
+        if getattr(current_user, "is_super_admin", False):
             return True
-
-        return _checker
-
-    return None
+        if perm_code not in _resolve_perms(user=current_user):
+            _raise_403(f"无 {perm_code} 权限")
+        return True
+    return _checker
 
 
 def check_permission(user: Any, perm_code: str) -> None:

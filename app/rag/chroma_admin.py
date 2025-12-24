@@ -4,22 +4,21 @@ import chromadb
 
 from app.config import settings
 
-# todo: 这个文件的文档需重新斟酌
 
-def get_collection():
+def get_collection(collection_name: str = settings.collection_name):
     """
-    获取/创建 chroma 中的某个 collection
+    获取/创建 chromadb 中名为 collection_name 的 collection
     :return: Collection
     """
     client = chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
-    return client.get_or_create_collection(settings.collection_name)
+    return client.get_or_create_collection(collection_name)
 
 
 def delete_by_doc_id(doc_id: str) -> int:
     """
-    通过 doc_id 删除对应的文档
+    通过 doc_id 从 chromadb 中删除对应的文档
     :param doc_id: 文件 ID
-    :return:
+    :return: 删除的向量的嵌入数量
     """
     col = get_collection()
     try:
@@ -37,9 +36,9 @@ def delete_by_doc_id(doc_id: str) -> int:
 
 def get_ids_and_metadatas_by_doc_id(doc_id: str) -> tuple[list[str], list[dict[str, Any]]]:
     """
-    通过 doc_id 获取对应文档的 ids 和 元数据
+    通过 doc_id 获取对应文档的 ids 和 元数据，ids 为 chromadb 中每个 Document 的主键
     :param doc_id: 文档 ID
-    :return: （ids的列表，元数据的列表）
+    :return: 一个元组，（ids的列表，元数据的列表）
     """
     col = get_collection()
     got = col.get(where={"doc_id": doc_id}, include=["metadatas"])
@@ -50,7 +49,7 @@ def get_ids_and_metadatas_by_doc_id(doc_id: str) -> tuple[list[str], list[dict[s
 
 def count_by_doc_id(doc_id: str) -> int:
     """
-    通过 doc_id 计算文档数量
+    通过 doc_id 计算 chromadb 嵌入向量的数量
     :param doc_id: 文档 ID
     :return: 文档的数量
     """
