@@ -2,6 +2,7 @@ from typing import Optional, Any
 
 from app.db_ops.conn_pool import get_conn
 
+# todo： 优化文档
 def upsert_kb_document(
         *,
         doc_id: str,

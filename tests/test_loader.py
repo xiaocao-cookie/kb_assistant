@@ -12,7 +12,7 @@ from app.ingestion.loader import (
     load_docs,
     split_docs,
     load_single_file,
-    split_with_visibility,
+    split_and_enrich_metadata,
     batch_chunks
 )
 
@@ -112,14 +112,14 @@ class TestFileLoaders(unittest.TestCase):
 
     # ----------------------- split_with_visibility -----------------------
     @patch("app.ingestion.loader.split_docs")
-    def test_split_with_visibility(self, mock_split_docs):
+    def test_split_and_enrich_metadata(self, mock_split_docs):
         mock_split_docs.return_value = [
             Document("chunk1", **{"source": "A"}),
             Document("chunk2", **{"source": "B"}),
         ]
 
         docs = [Document("tests")]
-        results = split_with_visibility(docs, visibility="private", doc_id="123")
+        results = split_and_enrich_metadata(docs, visibility="private", doc_id="123")
 
         self.assertEqual(len(results), 2)
         for c in results:

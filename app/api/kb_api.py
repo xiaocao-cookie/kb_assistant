@@ -9,7 +9,13 @@ import chromadb
 from app.api.auth_api import get_current_user
 from app.model.auth_model import UserInDB
 from app.config import settings
-from app.ingestion.loader import load_single_file, split_with_visibility, load_docs, split_docs, batch_chunks
+from app.ingestion.loader import (
+    load_single_file,
+    split_and_enrich_metadata,
+    load_docs,
+    split_docs,
+    batch_chunks
+)
 from app.deps import get_vs
 from app.service.rbac_service import require_permission
 from app.constants.rbac import Permission
@@ -46,7 +52,7 @@ kb_router = APIRouter(
 DATA_DOCS_DIR = Path(r"/home/supercao/PycharmProjects/kb_assistant/data/docs")
 DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)            # 若不存在 → 自动递归创建所有目录
 
-
+# todo： 优化文档
 @kb_router.post("/ingest")
 async def ingest(
         file: UploadFile = File(...),
@@ -106,7 +112,7 @@ async def ingest(
         "uploaded_at": int(time.time())
     }
 
-    chunks = split_with_visibility(
+    chunks = split_and_enrich_metadata(
         docs,
         visibility=visibility,
         doc_id=doc_id,
@@ -121,7 +127,6 @@ async def ingest(
         chroma_cnt = count_by_doc_id(doc_id)
     except Exception:
         chroma_cnt = len(chunks)
-    print(f"================={chroma_cnt}======================")
 
     upsert_kb_document(
         doc_id=doc_id,
@@ -211,7 +216,7 @@ async def ingest_batch(
                 "uploaded_at": int(time.time())
             }
 
-            chunks = split_with_visibility(
+            chunks = split_and_enrich_metadata(
                 docs,
                 visibility=visibility,
                 doc_id=_doc_id,
@@ -410,7 +415,7 @@ def reembed_doc(doc_id: str):
         "uploader_username": row.get("uploader_username")
     }
 
-    chunks = split_with_visibility(docs, visibility, doc_id, extra_meta)
+    chunks = split_and_enrich_metadata(docs, visibility, doc_id, extra_meta)
 
     vs = get_vs()
     vs.add_documents(chunks)

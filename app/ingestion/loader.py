@@ -11,7 +11,7 @@ from app.config import settings
 
 def load_pdf(path: Path) -> List[Document]:
     """
-    分页加载 pdf 文件，将其转换为Document对象之后的元数据有 source 和 page
+    分页加载 pdf 文件，将其存储为带有 source 和 page 元数据的 Document 对象列表
     :param path: pdf文件的路径
     :return: langchain_core.documents下的 Document 对象的列表
     """
@@ -29,7 +29,7 @@ def load_pdf(path: Path) -> List[Document]:
 
 def load_docx(path: Path) -> List[Document]:
     """
-    读取 docx 文件, 将其转换为Document对象之后的元数据有 source
+    读取 docx 文件, 将其转换为带有 source 元数据的 Document 对象列表
     :param path: word文件的路径
     :return: langchain_core.documents下的 Document 对象的列表
     """
@@ -40,7 +40,7 @@ def load_docx(path: Path) -> List[Document]:
 
 def load_docs(dir_path: str) -> List[Document]:
     """
-    读取某个目录下的文件，包括docx/doc, pdf, md, txt， md 和 txt 的元数据有 source
+    读取 dir_path 下的文件，文件类型支持 docx/doc, pdf, md, txt
     :param dir_path: 目录路径
     :return: langchain_core.documents下的 Document 对象的列表
     """
@@ -59,7 +59,7 @@ def load_docs(dir_path: str) -> List[Document]:
 
 def split_docs(docs: List[Document]) -> List[Document]:
     """
-    分割文档
+    将 docs 切割成块
     :param docs: 准备要分块的文档
     :return: langchain_core.documents下的 Document 对象的列表
     """
@@ -87,17 +87,17 @@ def load_single_file(path: Path) -> List[Document]:
     return []
 
 
-def split_with_visibility(docs: List[Document],
+def split_and_enrich_metadata(docs: List[Document],
                           visibility: str,
                           doc_id: str | None = None,
                           extra_meta: dict | None = None) -> List[Document]:
     """
-    将传入的 docs 分块，并将 visibility 和 doc_id 作为元数据添加到每个分块中
+    将传入的 docs 分块，并给每个分块加入 visibility 、doc_id 和 extra_meta 元数据
     :param docs: Document 列表
-    :param visibility:  可见性
-    :param doc_id:  文档id
+    :param visibility: 可见性
+    :param doc_id: 文档id
     :param extra_meta: 额外的元数据
-    :return: 添加了 visibility 和 doc_id 元数据的文件块
+    :return: 添加了元数据的文件块（chunks）
     """
     chunks = split_docs(docs)
     extra_metadata = dict(extra_meta or {})

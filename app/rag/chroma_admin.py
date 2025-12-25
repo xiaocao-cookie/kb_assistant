@@ -4,7 +4,7 @@ import chromadb
 
 from app.config import settings
 
-
+# todo： 优化文档
 def get_collection(collection_name: str = settings.collection_name):
     """
     获取/创建 chromadb 中名为 collection_name 的 collection

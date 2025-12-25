@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-
+# todo： 优化文档
 class KBDocListItem(BaseModel):
     """ 对应数据库中的 kb_documents 表"""
     doc_id: str
