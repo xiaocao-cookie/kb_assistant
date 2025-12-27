@@ -34,3 +34,11 @@ class KBDocReembedResp(BaseModel):
     new_chunks: int
     visibility: str
 
+
+class KBDocPageResp(BaseModel):
+    """  """
+    total: int
+    limit: int
+    offset: int
+    items: list[KBDocListItem]
+

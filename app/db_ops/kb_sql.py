@@ -60,7 +60,10 @@ def list_kb_documents(
         *,
         limit: int = 50,
         offset: int = 0,
-        visibility: str | None = None
+        visibility: str | None = None,
+        q: str | None = None,
+        order_by: str = "updated_at",
+        desc: bool = True
 ) -> list[dict[str, Any]]:
     """
     根据 visibility(可选) 列出 kb_documents 表中的前 limit 条数据，偏移量默认为 0
@@ -70,10 +73,19 @@ def list_kb_documents(
     :param limit: 数据的条数
     :param offset: 偏移量
     :param visibility: 文件的可见性
+    :param q: 查询键，即输入的关键词
+    :param order_by: 排序的依据，默认 updated_at
+    :param desc: 是否降序排列，默认为 True
     :return: 查询出的文档数据
     """
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
+
+    allowed_order = {"updated_at", "created_at", "original_filename", "doc_id", "visibility"}
+    if order_by not in allowed_order:
+        order_by = "updated_at"
+
+    order_dir = "DESC" if desc else "ASC"
 
     sql = """
     SELECT doc_id, original_filename, stored_path, visibility, uploader_user_id, 
@@ -85,7 +97,13 @@ def list_kb_documents(
     if visibility:
         sql += "AND visibility = %s "
         args.append(visibility)
-    sql += "ORDER BY updated_at DESC LIMIT %s OFFSET %s"
+
+    if q and q.strip():
+        sql += "AND (original_filename LIKE %s OR doc_id LIKE %s) "
+        like = f"%{q}%"
+        args.extend([like, like])
+
+    sql += f"ORDER BY {order_by} {order_dir} LIMIT %s OFFSET %s"
     args.extend([limit, offset])
 
     with get_conn() as conn:
@@ -109,6 +127,17 @@ def get_kb_document(doc_id: str) -> Optional[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(sql, (doc_id,))
             return cur.fetchone()
+
+
+def get_allowed_visibilities() -> set[str]:
+    """
+    获取 kb_visibility 中所有的可见性名称
+    :return: 可见性列表
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT name FROM kb_visibility")
+            return {row["name"] for row in cur.fetchall()}
 
 
 def update_kb_document_visibility(doc_id: str, visibility: str) -> bool:
@@ -158,3 +187,32 @@ def soft_delete_kb_document(doc_id: str) -> bool:
                 (doc_id,),
             )
             return cur.rowcount > 0
+
+
+def count_kb_documents(*,
+                       visibility: str | None = None,
+                       q: str | None = None) -> int:
+    """
+
+    :param visibility:
+    :param q:
+    :return:
+    """
+
+    sql = "SELECT COUNT(*) AS cnt FROM kb_documents WHERE is_deleted = 0 "
+    args: list[Any] = []
+
+    if visibility:
+        sql += "AND visibility = %s "
+        args.append(visibility)
+
+    if q and q.strip():
+        sql += "AND (original_filename LIKE %s OR doc_id LIKE %s) "
+        like = f"%{q}%"
+        args.extend([like, like])
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, tuple(args))
+            row = cur.fetchone()
+            return int(row["cnt"]) if row and "cnt" in row else 0

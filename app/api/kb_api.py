@@ -25,19 +25,21 @@ from app.db_ops.kb_sql import (
     upsert_kb_document,
     update_kb_document_visibility,
     update_kb_document_chunk_count,
-    soft_delete_kb_document
+    soft_delete_kb_document,
+    get_allowed_visibilities,
+    count_kb_documents
 )
 from app.model.kb_model import (
     KBDocListItem,
     KBDocDetail,
     KBDocReembedResp,
-    KBDocVisibilityUpdateReq
+    KBDocVisibilityUpdateReq,
+    KBDocPageResp
 )
 from app.rag.chroma_admin import (
     delete_by_doc_id,
     update_visibility_by_doc_id,
-    count_by_doc_id,
-    get_ids_and_metadatas_by_doc_id
+    count_by_doc_id
 )
 
 kb_router = APIRouter(
@@ -52,6 +54,17 @@ kb_router = APIRouter(
 DATA_DOCS_DIR = Path(r"/home/supercao/PycharmProjects/kb_assistant/data/docs")
 DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)            # 若不存在 → 自动递归创建所有目录
 
+
+def parse_visibility(v: str) -> str:
+    """
+    解析，规范化可见性参数
+    """
+    v = (v or "").strip().lower()
+    if v not in get_allowed_visibilities():
+        raise HTTPException(status_code=400, detail=f"无效的可见性 {v}")
+    return v
+
+
 # todo： 优化文档
 @kb_router.post("/ingest")
 async def ingest(
@@ -59,6 +72,7 @@ async def ingest(
         visibility: str = Form("public"),
         doc_id: Optional[str] = Form(None),
         overwrite: bool = Form(False),
+        delete_old_file: bool = Form(False),
         current_user: UserInDB = Depends(get_current_user)
 ):
     """
@@ -73,24 +87,22 @@ async def ingest(
     :param visibility: 文件的可见性属性
     :param doc_id: 文件 id
     :param overwrite: 是否重写
+    :param delete_old_file:
     :param current_user: 从请求头中获取当前用户
     :return: 保存的路径，可见性，文件id, 分块长度, 是否已重写
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="空文件")
 
-    visibility = (visibility or "public").strip().lower()
+    visibility = parse_visibility(visibility)
     doc_id = (doc_id or f"doc-{uuid.uuid4().hex[:12]}").strip()
 
     existed = get_kb_document(doc_id)
     if existed and not overwrite:
         raise HTTPException(status_code=409, detail=f"文档ID为 {doc_id} 对应的文档已存在且无需重写")
 
-    if existed and overwrite:
-        try:
-            delete_by_doc_id(doc_id)
-        except Exception as e:
-            print(f"删除失败： {e}")
+    old_path = existed["stored_path"] if existed else None
+
     suffix = Path(file.filename).suffix
     safe_name = f"{int(time.time())}_{uuid.uuid4().hex}{suffix}"
     save_path = DATA_DOCS_DIR / safe_name
@@ -119,6 +131,9 @@ async def ingest(
         extra_meta=extra_meta
     )
 
+    if existed and overwrite:
+        delete_by_doc_id(doc_id)
+
     vs = get_vs()
     for batch in batch_chunks(chunks, 64):
         vs.add_documents(batch)
@@ -138,12 +153,23 @@ async def ingest(
         chunk_count=chroma_cnt
     )
 
+    deleted_old_file = False
+    if deleted_old_file and old_path and old_path != str(save_path):
+        try:
+            p = Path(old_path)
+            if p.exists() and p.is_file():
+                p.unlink()
+                deleted_old_file = True
+        except Exception:
+            deleted_old_file = False
+
     return {
         "saved_as": str(save_path),
         "visibility": visibility,
         "doc_id": doc_id,
         "chunks": chroma_cnt,
-        "overwrote": bool(existed and overwrite)
+        "overwrote": bool(existed and overwrite),
+        "deleted_old_file": deleted_old_file,
     }
 
 
@@ -165,7 +191,7 @@ async def ingest_batch(
     if not files:
         raise HTTPException(status_code=400, detail="未上传文件")
 
-    visibility = (visibility or "public").strip().lower()
+    visibility = parse_visibility(visibility)
 
     results = []
 
@@ -304,12 +330,22 @@ def reindex(visibility_default: str = Form("public")):
 @kb_router.get("/list_docs", response_model=list[KBDocListItem])
 def list_docs(
         visibility: Optional[str] = Query(default=None),
+        q: Optional[str] = Query(default=None),
+        order_by: str = Query(default="updated_by"),
+        desc: bool = Query(default=True),
         limit: int = Query(default=50, ge=1, le=200),
         offset: int = Query(default=0, ge=0),
         include_chroma_count: bool = Query(default=False)
 ):
     """ 列出满足条件的文档，筛选条件为 limit, offset, visibility 和 include_chroma_count """
-    rows = list_kb_documents(limit=limit, offset=offset, visibility=visibility)
+    rows = list_kb_documents(
+        limit=limit,
+        offset=offset,
+        visibility=visibility,
+        q=q,
+        order_by=order_by,
+        desc=desc
+    )
 
     out: list[dict] = []
     for r in rows:
@@ -318,6 +354,53 @@ def list_docs(
             item["chroma_chunk_count"] = count_by_doc_id(item["doc_id"])
         out.append(item)
     return out
+
+
+@kb_router.get("/list_docs/page", response_model=KBDocPageResp)
+def list_docs_page(
+        visibility: Optional[str] = Query(default=None),
+        q: Optional[str] = Query(default=None),
+        order_by: str = Query(default="updated_at"),
+        desc: bool = Query(default=None),
+        limit: int = Query(default=50, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+        include_chroma_count: bool = Query(default=False)
+):
+    """
+
+    :param visibility:
+    :param q:
+    :param order_by:
+    :param desc:
+    :param limit:
+    :param offset:
+    :param include_chroma_count:
+    :return:
+    """
+
+    total = count_kb_documents(visibility=visibility, q=q)
+    rows = list_kb_documents(
+        limit=limit,
+        offset=offset,
+        visibility=visibility,
+        q=q,
+        order_by=order_by,
+        desc=desc
+    )
+
+    items: list[dict] = []
+    for r in rows:
+        item = dict(r)
+        if include_chroma_count:
+            item["chroma_chunk_count"] = count_by_doc_id(item["doc_id"])
+        items.append(item)
+
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": items,
+    }
 
 
 @kb_router.get("/docs/{doc_id}", response_model=KBDocDetail)
@@ -345,7 +428,7 @@ def update_doc_visibility(
     if not row:
         raise HTTPException(status_code=404, detail=f"文档ID为 {doc_id} 对应的文档未找到")
 
-    visibility = (req.visibility or "").strip().lower()
+    visibility = parse_visibility(req.visibility)
     if not visibility:
         raise HTTPException(status_code=400, detail="文档需要可见性")
 

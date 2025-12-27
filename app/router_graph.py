@@ -29,7 +29,7 @@ def decide_route(state: RouterState) -> str:
     # 关键词路由
     text = (state.get("text") or state.get("question") or "").lower()
     qa_keywords = [
-        "还能", "还可以", "其他问题", "帮我查", "我想问", "请问", "可以告诉我", "想咨询"
+        "还能", "还可以", "其他问题", "帮我查", "我想问", "请问", "可以告诉我", "想咨询", "制度"
     ]
 
     leave_keywords = [
