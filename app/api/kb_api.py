@@ -59,13 +59,14 @@ def parse_visibility(v: str) -> str:
     """
     解析，规范化可见性参数
     """
-    v = (v or "").strip().lower()
+    v = (v or "").strip().upper()
+    print(get_allowed_visibilities())
     if v not in get_allowed_visibilities():
+        print(f"================{v}===========================")
         raise HTTPException(status_code=400, detail=f"无效的可见性 {v}")
     return v
 
 
-# todo： 优化文档
 @kb_router.post("/ingest")
 async def ingest(
         file: UploadFile = File(...),
@@ -76,18 +77,16 @@ async def ingest(
         current_user: UserInDB = Depends(get_current_user)
 ):
     """
-    将语料库上传到 chromadb/chroma 的某个 collection 中
-
-    具体步骤如下：
+    此函数实现了以下三个功能：
     1. 上传一个文件，并将其保存到磁盘
-    2. 将其切块，并给每个切块（Document对象）都增加上 visibility 和 doc_id 的元数据信息
-    3. 最后添加到 chroma 数据库中
+    2. 文件切块，每一块上都附加上 visibility 和 doc_id 以及其他的元数据信息，最后添加到 chroma 数据库中
+    3. 将文件的一些元数据 upsert 到 kb_documents 的数据库中
 
     :param file: 上传的文件
     :param visibility: 文件的可见性属性
     :param doc_id: 文件 id
     :param overwrite: 是否重写
-    :param delete_old_file:
+    :param delete_old_file: 是否要删除旧文件
     :param current_user: 从请求头中获取当前用户
     :return: 保存的路径，可见性，文件id, 分块长度, 是否已重写
     """
@@ -112,7 +111,7 @@ async def ingest(
         raise HTTPException(status_code=400, detail="空文件")
     save_path.write_bytes(content)
 
-    docs = load_single_file(save_path)                                                  # 切块
+    docs = load_single_file(save_path)
     if not docs:
         raise HTTPException(status_code=400, detail="文件类型不支持或空文件")
 
@@ -154,7 +153,7 @@ async def ingest(
     )
 
     deleted_old_file = False
-    if deleted_old_file and old_path and old_path != str(save_path):
+    if delete_old_file and old_path and old_path != str(save_path):
         try:
             p = Path(old_path)
             if p.exists() and p.is_file():
@@ -182,12 +181,18 @@ async def ingest_batch(
         current_user: UserInDB = Depends(get_current_user)
 ):
     """
-    多文件上传并写入 Chroma
+    多文件上传并写入 Chroma, MySql 以及磁盘中
 
     - 每个文件会生成一个独立 doc_id（除非显式传入）
     - 失败文件不会影响其他文件
+
+    :param files: 多个文件，仅支持 doc/docx/pdf/md/txt
+    :param visibility: 文档可见性
+    :param doc_id: 文档 ID
+    :param overwrite: 是否重写
+    :param current_user: 当前用户
+    :return: 相关信息
     """
-    # todo： 此段是AI生成，未测试此接口，考虑简化
     if not files:
         raise HTTPException(status_code=400, detail="未上传文件")
 
@@ -337,7 +342,19 @@ def list_docs(
         offset: int = Query(default=0, ge=0),
         include_chroma_count: bool = Query(default=False)
 ):
-    """ 列出满足条件的文档，筛选条件为 limit, offset, visibility 和 include_chroma_count """
+    """
+    按照所给条件列出文档, 筛选条件如下
+
+    :param visibility: 文档可见性
+    :param q: 查询关键字
+    :param order_by: 排序的依据
+    :param desc: 是否降序
+    :param limit: 限制一次查几条
+    :param offset: 偏移量，即从第几条开始查
+    :param include_chroma_count: 指定返回列表中的每一项是否要包含 chroma 中的分块数量
+    :return: 知识库文档列表
+    """
+
     rows = list_kb_documents(
         limit=limit,
         offset=offset,
@@ -367,15 +384,16 @@ def list_docs_page(
         include_chroma_count: bool = Query(default=False)
 ):
     """
+    根据给定条件，分页列出知识库文档，筛选条件如下
 
-    :param visibility:
-    :param q:
-    :param order_by:
-    :param desc:
-    :param limit:
-    :param offset:
-    :param include_chroma_count:
-    :return:
+    :param visibility: 文档可见性
+    :param q: 查询参数
+    :param order_by: 排序依据
+    :param desc: 是否降序
+    :param limit: 限制一次查几条
+    :param offset: 偏移量，即从第几条开始查询
+    :param include_chroma_count: 指定返回列表中的每一项是否要包含 chroma 中的分块数量
+    :return: 知识库文档分页的响应体 KBDocPageResp
     """
 
     total = count_kb_documents(visibility=visibility, q=q)
@@ -423,7 +441,15 @@ def update_doc_visibility(
         doc_id: str,
         req: KBDocVisibilityUpdateReq
 ):
-    """ 根据 doc_id 修改文档"""
+    """
+    根据 doc_id 更新 MySQL 中的 kb_documents 的可见性和分块数量，
+    并同步更新 chromadb 中的可见性元数据
+    返回更新后文档的信息
+
+    :param doc_id: 文档 ID
+    :param req: 更新知识库文档可见性的请求体
+    :return: KBDocDetail
+    """
     row = get_kb_document(doc_id)
     if not row:
         raise HTTPException(status_code=404, detail=f"文档ID为 {doc_id} 对应的文档未找到")
@@ -447,7 +473,16 @@ def delete_doc(
         doc_id: str,
         delete_file: bool = Query(default=False)
 ):
-    """ 根据 doc_id 删除文档 """
+    """
+    根据 doc_id `删除知识库文档`，并通过 delete_file 参数指定是否删除磁盘中存储的原知识库文档
+    删除知识库文档有两个部分：
+    1. 逻辑删除： 将 MySql 中 kb_documents 中的 is_deleted 字段设置为 1
+    2. 在 ChromaDB 中，将 doc_id 对应的 chunks 删除
+
+    :param doc_id: 文档 ID
+    :param delete_file: 是否要删除磁盘中对应的原文档
+    :return: 删除成功与否的相关信息
+    """
     row = get_kb_document(doc_id)
     if not row:
         raise HTTPException(status_code=404, detail=f"文档ID为 {doc_id} 对应的文档未找到")
@@ -475,7 +510,12 @@ def delete_doc(
 
 @kb_router.post("/docs/{doc_id}/reembed", response_model=KBDocReembedResp)
 def reembed_doc(doc_id: str):
-    """ 根据 doc_id 重嵌入文档 """
+    """
+    根据 doc_id 重嵌入文档，并将信息同步到 MySql 、ChromaDB 和磁盘中
+
+    :param doc_id: 知识库文档 ID
+    :return: KBDocReembedResp
+    """
     row = get_kb_document(doc_id)
     if not row:
         raise HTTPException(status_code=404, detail=f"文档ID为为为 {doc_id} 对应的文档未找到")
@@ -505,7 +545,6 @@ def reembed_doc(doc_id: str):
 
 
     new_count = count_by_doc_id(doc_id)
-    print(f"==-------------------{new_count}======================")
     update_kb_document_chunk_count(doc_id, new_count)
     update_kb_document_visibility(doc_id, visibility)
 

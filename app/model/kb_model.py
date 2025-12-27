@@ -36,7 +36,7 @@ class KBDocReembedResp(BaseModel):
 
 
 class KBDocPageResp(BaseModel):
-    """  """
+    """ 知识库文档分页的响应体 """
     total: int
     limit: int
     offset: int

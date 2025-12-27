@@ -21,7 +21,7 @@ def upsert_kb_document(
     :param stored_path: 存储路径
     :param visibility: 可见性
     :param uploader_user_id: 上传者 ID
-    :param uploader_username: 上传着名称
+    :param uploader_username: 上传者名称
     :param chunk_count: 分块数量
     :return: 知识库文档
     """
