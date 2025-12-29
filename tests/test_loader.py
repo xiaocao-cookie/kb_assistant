@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 from langchain_core.documents import Document
 
 # 导入你的模块
-from app.ingestion.loader import (
+from app.ingestion.doc_loader import (
     load_pdf,
     load_docx,
     load_docs,

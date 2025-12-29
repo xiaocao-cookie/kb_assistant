@@ -9,7 +9,7 @@ import chromadb
 from app.api.auth_api import get_current_user
 from app.model.auth_model import UserInDB
 from app.config import settings
-from app.ingestion.loader import (
+from app.ingestion.doc_loader import (
     load_single_file,
     split_and_enrich_metadata,
     load_docs,

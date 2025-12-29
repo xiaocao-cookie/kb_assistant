@@ -1,4 +1,4 @@
-from app.ingestion.loader import split_docs, load_docs
+from app.ingestion.doc_loader import split_docs, load_docs
 from app.deps import get_vs
 
 def main():

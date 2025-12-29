@@ -12,6 +12,7 @@ from app.db_ops.redis_session import load_session, save_session
 from app.api.auth_api import auth_router
 from app.api.rbac_api import rbac_roles_router, rbac_users_router
 from app.api.kb_api import kb_router
+from app.api.audio_api import audio_router
 
 import chromadb
 
@@ -20,6 +21,7 @@ app.include_router(auth_router)
 app.include_router(rbac_roles_router)
 app.include_router(rbac_users_router)
 app.include_router(kb_router)
+app.include_router(audio_router)
 
 
 app.add_middleware(
