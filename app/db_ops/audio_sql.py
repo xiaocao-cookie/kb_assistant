@@ -99,3 +99,21 @@ def get_audio_document(audio_id: str) -> Optional[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(sql, (audio_id, ))
             return cur.fetchone()
+
+
+def get_audio_segment(audio_id: str, segment_idx: int):
+    """
+    根据 audio_id 和 segment_idx 获取分段音频的信息
+
+    :param audio_id: 音频 ID
+    :param segment_idx: 音频的分段 ID
+    :return: 音频信息
+    """
+    sql = """
+          SELECT audio_id, segment_idx, start_ms, end_ms, text 
+          FROM audio_segments WHERE audio_id=%s AND segment_idx=%s LIMIT 1
+          """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (audio_id, int(segment_idx)))
+            return cur.fetchone()

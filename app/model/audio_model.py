@@ -35,7 +35,8 @@ class AudioSearchHit(BaseModel):
     start_ms: int
     end_ms: int
     texts: str
-    score: Optional[float] = None
+    score: Optional[float] = None               # todo： 得分属性待使用
+    clip_url: Optional[str] = None              # 可供用户下载的链接
 
 
 class AudioSearchResp(BaseModel):

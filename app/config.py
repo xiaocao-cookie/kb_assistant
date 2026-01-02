@@ -33,4 +33,10 @@ class Setting(BaseModel):
     MYSQL_PASSWORD: str = os.getenv("MYSQL_PASSWORD", "123456")
     MYSQL_DB: str = os.getenv("MYSQL_DB", "kb_assistant")
 
+    # ================= 音频处理配置 =========================
+    # ffmpeg 用于转码/处理
+    ffmpeg_cmd = os.getenv("FFMPEG_CMD", "/home/supercao/Downloads/ffmpeg-master-latest-linux64-gpl/bin/ffmpeg")
+    # ffprobe 用于查看媒体的信息
+    ffprobe_cmd = os.getenv("FFPROBE_CMD", "/home/supercao/Downloads/ffmpeg-master-latest-linux64-gpl/bin/ffprobe")
+
 settings = Setting()
