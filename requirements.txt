@@ -27,3 +27,7 @@ faster-whisper==1.2.1
 ffmpeg-python==0.2.0
 soundfile==0.13.1
 numpy==2.4.0
+
+# --- MQ ---
+celery==5.6.0
+amqp==5.3.1

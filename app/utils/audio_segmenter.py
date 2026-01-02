@@ -1,8 +1,7 @@
 from dataclasses import dataclass
-from typing import List
 
-from app.ingestion.asr import ASRSegment
 
+from app.utils.asr import ASRSegment
 
 @dataclass
 class Chunk:
@@ -12,11 +11,20 @@ class Chunk:
 
 
 def merge_by_max_duration(
-    segs: List[ASRSegment],
-    max_ms: int = 25_000,    # 25秒
-    min_ms: int = 6_000,     # 太短则继续合并
-) -> List[Chunk]:
-    chunks: List[Chunk] = []
+        segs: list[ASRSegment],
+        max_ms: int = 25_000,
+        min_ms: int = 6_000
+) -> list[Chunk]:
+    """
+    将连续的 segs 分段合并成长度在 (min_ms, max_ms] 之间的块
+
+    :param segs: ASRSegment 的列表，通过 ASR 转成的文本分割块
+    :param max_ms: 最大毫秒数
+    :param min_ms: 最小毫秒数
+    :return: 长度在 (min_ms, max_ms] 之间的文本块
+    """
+
+    chunks: list[Chunk] = []
     cur_start = None
     cur_end = None
     buf: list[str] = []
@@ -43,7 +51,6 @@ def merge_by_max_duration(
             cur_end = new_end
             buf.append(s.text)
         else:
-            # 如果当前太短，还是拼上去再切，主要是避免碎片
             if (cur_end - cur_start) < min_ms:
                 cur_end = new_end
                 buf.append(s.text)

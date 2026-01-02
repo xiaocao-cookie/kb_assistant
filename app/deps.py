@@ -1,15 +1,9 @@
-from app.rag.vectorstore import get_vectorstore
+from app.rag.vectorstore import get_vectorstore, get_audio_vectorstore
 from app.config import settings
 from langchain_community.embeddings import ZhipuAIEmbeddings
 from zhipuai import ZhipuAI
 from langchain_openai import ChatOpenAI
 
-# response = client.chat.completions.create(
-#     model=settings.model_name,
-#     messages=[{"role": "user", "content": "你是谁？"}],  # type: ignore[arg-type]
-#     temperature=0
-# )
-# return response.choices[0].message.content
 
 
 def get_llm():
@@ -43,6 +37,12 @@ def get_vs():
     """
     return get_vectorstore(get_embeddings())
 
+
+def get_audio_vs():
+    """
+    获取音频的向量存储
+    """
+    return get_audio_vectorstore(get_embeddings())
 
 if __name__ == "__main__":
     print(get_embeddings())

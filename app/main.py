@@ -14,7 +14,6 @@ from app.api.rbac_api import rbac_roles_router, rbac_users_router
 from app.api.kb_api import kb_router
 from app.api.audio_api import audio_router
 
-import chromadb
 
 app = FastAPI(title="Enterprise KB Assistant")
 app.include_router(auth_router)

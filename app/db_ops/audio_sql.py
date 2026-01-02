@@ -1,41 +1,54 @@
-from typing import Any, Optional
+from typing import Optional, Any
 
 from app.db_ops.conn_pool import get_conn
 
 
-# todo: 写文档注释
 def upsert_audio_document(
-    *,
-    audio_id: str,
-    original_filename: str,
-    stored_path: str,
-    duration_ms: int,
-    language: str | None,
-    visibility: str,
-    status: str,
-    uploader_user_id: int | None,
-    uploader_username: str | None,
-    segment_count: int,
+        *,
+        audio_id: str,
+        original_filename: str,
+        stored_path: str,
+        duration_ms: int,
+        language: str | None,
+        visibility: str,
+        status: str,
+        uploader_user_id: int | None,
+        uploader_username: str | None,
+        segment_count: int
 ) -> None:
-    """ 更新并插入音频数据到 MySQL 中的 audio_documents 表中 """
+    """
+    更新并插入音频的相关信息
+
+    :param audio_id: 音频 ID
+    :param original_filename: 原文件名
+    :param stored_path: 存储路径
+    :param duration_ms: 音频的毫秒数
+    :param language: 音频的语言
+    :param visibility: 可见性
+    :param status: 状态
+    :param uploader_user_id: 上传者 ID
+    :param uploader_username: 上传者名称
+    :param segment_count: 分段的数量
+    :return: 如果成功则返回 None， 否则引发异常
+    """
 
     sql = """
-    INSERT INTO audio_documents
-      (audio_id, original_filename, stored_path, duration_ms, language, visibility, status,
-       uploader_user_id, uploader_username, segment_count)
-    VALUES
-      (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-    ON DUPLICATE KEY UPDATE
-      original_filename=VALUES(original_filename),
-      stored_path=VALUES(stored_path),
-      duration_ms=VALUES(duration_ms),
-      language=VALUES(language),
-      visibility=VALUES(visibility),
-      status=VALUES(status),
-      uploader_user_id=VALUES(uploader_user_id),
-      uploader_username=VALUES(uploader_username),
-      segment_count=VALUES(segment_count)
-    """
+          INSERT INTO audio_documents
+          (audio_id, original_filename, stored_path, duration_ms, language, visibility, status,
+           uploader_user_id, uploader_username, segment_count)
+          VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY \
+          UPDATE \
+              original_filename= \
+          VALUES (original_filename), stored_path= \
+          VALUES (stored_path), duration_ms= \
+          VALUES (duration_ms), language = \
+          VALUES (language), visibility= \
+          VALUES (visibility), status= \
+          VALUES (status), uploader_user_id= \
+          VALUES (uploader_user_id), uploader_username= \
+          VALUES (uploader_username), segment_count= \
+          VALUES (segment_count) \
+          """
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -49,12 +62,13 @@ def upsert_audio_document(
 
 def replace_audio_segments(audio_id: str, segments: list[dict[str, Any]]) -> None:
     """
+    使用 segments 提供的分段信息替换 audio_id 对应的分段数据
 
-
-    :param audio_id:
-    :param segments:
-    :return:
+    :param audio_id: 音频 ID
+    :param segments: 分段信息的列表
+    :return: 如果成功，返回 None, 否则抛出异常
     """
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM audio_segments WHERE audio_id=%s", (audio_id,))
@@ -62,7 +76,7 @@ def replace_audio_segments(audio_id: str, segments: list[dict[str, Any]]) -> Non
                 cur.executemany(
                     "INSERT INTO audio_segments (audio_id, segment_idx, start_ms, end_ms, texts) VALUES (%s,%s,%s,%s,%s)",
                     [
-                        (audio_id, int(s["segment_idx"]), int(s["start_ms"]), int(s["end_ms"]), s["texts"])
+                        (audio_id, int(s["segment_idx"]), int(s["start_ms"]), int(s["end_ms"]), s["text"])
                         for s in segments
                     ],
                 )
@@ -70,17 +84,18 @@ def replace_audio_segments(audio_id: str, segments: list[dict[str, Any]]) -> Non
 
 def get_audio_document(audio_id: str) -> Optional[dict[str, Any]]:
     """
+    通过 audio_id 在 audio_documents 表中查询对应音频的相关信息
 
-
-    :param audio_id:
-    :return:
+    :param audio_id: 音频 ID
+    :return: 对应的音频信息
     """
+
+    sql = """SELECT audio_id, original_filename, stored_path, duration_ms, language, visibility, status, 
+             uploader_user_id, uploader_username, segment_count, created_at, updated_at 
+            FROM audio_documents WHERE audio_id=%s LIMIT 1
+          """
+
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT audio_id, original_filename, stored_path, duration_ms, language, visibility, status, "
-                "uploader_user_id, uploader_username, segment_count, created_at, updated_at "
-                "FROM audio_documents WHERE audio_id=%s LIMIT 1",
-                (audio_id,),
-            )
+            cur.execute(sql, (audio_id, ))
             return cur.fetchone()

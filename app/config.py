@@ -21,6 +21,7 @@ class Setting(BaseModel):
     chroma_host: str = os.getenv("CHROMA_HOST", "localhost")
     chroma_port: int = int(os.getenv("CHROMA_PORT", "8000"))
     collection_name: str = os.getenv("COLLECTION_NAME", "knowledge_base")
+    audio_collection_name: str = os.getenv("AUDIO_COLLECTION_NAME", "audio_base")
 
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "800"))
     chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "120"))

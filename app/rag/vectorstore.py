@@ -3,6 +3,13 @@ from app.config import settings
 from langchain_chroma import Chroma
 
 
+def get_client():
+    """  """
+    return chromadb.HttpClient(
+        host=settings.chroma_host,
+        port=settings.chroma_port
+    )
+
 def get_vectorstore(embeddings):
     """
     从嵌入层中获取向量存储
@@ -17,14 +24,18 @@ def get_vectorstore(embeddings):
     #   -e PERSIST_DIRECTORY=/chroma/chroma \
     #   -v /home/supercao/PycharmProjects/kb_assistant/data/chroma:/chroma/chroma \
     #   chromadb/chroma
-    client = chromadb.HttpClient(
-        host=settings.chroma_host,
-        port=settings.chroma_port
-    )        # 连接到 chorma 服务
 
     return Chroma(
-        client=client,
+        client=get_client(),
         collection_name=settings.collection_name,
         embedding_function=embeddings,
         persist_directory="/chroma/chroma"
+    )
+
+
+def get_audio_vectorstore(embeddings):
+    return Chroma(
+        client=get_client(),
+        collection_name=settings.audio_collection_name,
+        embedding_function=embeddings,
     )

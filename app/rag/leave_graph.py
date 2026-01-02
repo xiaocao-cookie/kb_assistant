@@ -11,8 +11,8 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.deps import get_llm
-from app.workflows.leave.models import LeaveState
-from app.workflows.leave.rules import validate_leave
+from app.model.leave_model import LeaveState
+from app.utils.leave_rules import validate_leave
 from app.prompts.leave_prompt import SLOT_SYSTEM, SLOT_USER
 from app.prompts.parse_date_prompt import TIME_USER, TIME_SYSTEM
 from app.db_ops.leave_sql import (

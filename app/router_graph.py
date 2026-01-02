@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TypedDict, List, Any
 from app.rag.qa_graph import build_qa_graph
 from langgraph.graph import StateGraph, START, END
-from app.workflows.leave.leave_graph import build_leave_graph
+from app.rag.leave_graph import build_leave_graph
 
 class RouterState(TypedDict, total=False):
     question: str

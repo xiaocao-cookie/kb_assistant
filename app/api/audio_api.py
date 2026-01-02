@@ -6,7 +6,7 @@ import time
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Depends
 from langchain_core.documents import Document
 
-from app.deps import get_vs
+from app.deps import get_audio_vs
 from app.service.rbac_service import require_permission, get_current_user
 from app.constants.rbac import Permission
 from app.model.audio_model import (
@@ -22,8 +22,8 @@ from app.db_ops.audio_sql import (
 )
 from app.rag.audio_retrieve import audio_similarity_search_for_user
 from app.ingestion.audio_loader import transcode_to_wav_16k_mono, ffprobe_duration_ms
-from app.ingestion.asr import ASR
-from app.ingestion.audio_segmenter import merge_by_max_duration
+from app.utils.asr import ASR
+from app.utils.audio_segmenter import merge_by_max_duration
 from app.ingestion.doc_loader import batch_chunks
 from app.model.auth_model import UserInDB
 
@@ -31,14 +31,17 @@ from app.model.auth_model import UserInDB
 audio_router = APIRouter(
     prefix="/audio",
     tags=["音频检索路由"],
-    dependencies=require_permission(Permission.PERM_KB_MANAGE_DOCS)
+    dependencies=
+    [
+        Depends(require_permission(Permission.PERM_KB_MANAGE_DOCS)),
+     ]
 )
 
 
 AUDIO_DIR = Path("data/audio")      # todo: 作 OS 对象存储
 AUDIO_WAV_DIR = Path("data/audio_wav")
 
-# todo: 写注释文档
+
 @audio_router.post("/ingest", response_model=AudioIngestResp)
 async def ingest_audio(
         file: UploadFile = File(...),
@@ -47,12 +50,16 @@ async def ingest_audio(
         current_user: UserInDB = Depends(get_current_user)
 ):
     """
+    此函数实现了以下三个功能：
+    1. 上传一个音频文件，并将其保存到磁盘
+    2. 将音频转成文本并存储到 Chroma 中名为 audio_base 的 collection 中
+    3. 将文件的一些元数据 upsert 到 audio_documents 的数据库中
 
-    :param file:
-    :param audio_id:
-    :param language:
-    :param current_user:
-    :return:
+    :param file: 原文件
+    :param audio_id: 音频 ID
+    :param language: 音频的语言
+    :param current_user: 当前登录用户
+    :return: AudioIngestResp
     """
 
     if not file.filename:
@@ -81,7 +88,7 @@ async def ingest_audio(
 
     chunks = merge_by_max_duration(asr_segs, max_ms=25_000, min_ms=6_000)
 
-    vs = get_vs()               # todo: 需修改
+    vs = get_audio_vs()
 
     docs: list[Document] = []
     segment_rows: list[dict] = []
@@ -112,7 +119,7 @@ async def ingest_audio(
     if not docs:
         raise HTTPException(status_code=400, detail="无转换")
 
-    for batch in batch_chunks(chunks, 64):
+    for batch in batch_chunks(docs, 64):
         vs.add_documents(batch)
 
     upsert_audio_document(
@@ -146,11 +153,13 @@ def search_audio(
         k: int = Query(default=6, ge=1, le=20)
 ):
     """
+    查询与 q 最近的 k 个向量（文档）
 
-    :param q:
-    :param k:
-    :return:
+    :param q: 查询键
+    :param k: 最邻近的 k 个
+    :return: AudioSearchResp
     """
+
     docs, allowed = audio_similarity_search_for_user(q, k=k)
 
     hits: list[AudioSearchHit] = []
@@ -174,10 +183,12 @@ def search_audio(
 @audio_router.get("/{audio_id}", response_model=AudioDocDetail)
 def get_audio(audio_id: str):
     """
+    通过 audio_id 获取音频信息
 
-    :param audio_id:
-    :return:
+    :param audio_id: 音频 ID
+    :return: AudioDocDetail，音频信息
     """
+
     row = get_audio_document(audio_id)
     if not row:
         raise HTTPException(status_code=404, detail=f"Audio_id 为 {audio_id} 的数据未找到")

@@ -2,11 +2,19 @@ import subprocess
 from pathlib import Path
 
 
-def ensure_dir(p: Path) -> None:  # 确保路径存在
+def ensure_dir(p: Path) -> None:
+    """ 确保 p 存在，若不存在则创建 """
     p.mkdir(parents=True, exist_ok=True)
 
 
-def ffprobe_duration_ms(src: Path) -> int:  # 这段音频的时长，以毫秒为单位计数
+def ffprobe_duration_ms(src: Path) -> int:
+    """
+    通过 ffprobe 获取 src(音/视频) 文件的时长，以 ms 返回
+
+    :param src: 音/视频的文件路径
+    :return: 时长（ms）
+    """
+
     cmd = [
         "/home/supercao/Downloads/ffmpeg-master-latest-linux64-gpl/bin/ffprobe",
         "-v", "error",
@@ -18,10 +26,18 @@ def ffprobe_duration_ms(src: Path) -> int:  # 这段音频的时长，以毫秒�
     if not out:
         return 0
     sec = float(out)
-    return int(sec * 1000)  # 这段音频的时长，以毫秒为单位计数
+    return int(sec * 1000)
 
 
 def transcode_to_wav_16k_mono(src: Path, dst: Path) -> None:
+    """
+    将 src(音/视频) 文件统一转码为 dst（WAV 文件： 16KHZ，单声道）
+
+    :param src: 源音/视频文件路径
+    :param dst: 转化后 WAV 音频文件路径
+    :return: None
+    """
+
     ensure_dir(dst.parent)
     cmd = [
         "/home/supercao//Downloads/ffmpeg-master-latest-linux64-gpl/bin/ffmpeg",

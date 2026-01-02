@@ -79,7 +79,8 @@ async def ingest(
     """
     此函数实现了以下三个功能：
     1. 上传一个文件，并将其保存到磁盘
-    2. 文件切块，每一块上都附加上 visibility 和 doc_id 以及其他的元数据信息，最后添加到 chroma 数据库中
+    2. 文件切块，每一块上都附加上 visibility 和 doc_id 以及其他的元数据信息，
+        最后添加到 Chroma 中名为 knowledge_base 的 collection 中
     3. 将文件的一些元数据 upsert 到 kb_documents 的数据库中
 
     :param file: 上传的文件

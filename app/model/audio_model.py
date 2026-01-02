@@ -1,11 +1,11 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel
 
-# todo: 文档完善
+
 class AudioIngestResp(BaseModel):
-    """ 音频嵌入的请求体 """
+    """ 音频嵌入的响应体 """
     audio_id: str
     stored_as: str
     duration_ms: int
@@ -15,7 +15,7 @@ class AudioIngestResp(BaseModel):
 
 
 class AudioDocDetail(BaseModel):
-    """  """
+    """ 对应于 MySQL 数据库中的 audio_documents 表 """
     audio_id: str
     original_filename: str
     stored_path: str
@@ -29,7 +29,7 @@ class AudioDocDetail(BaseModel):
 
 
 class AudioSearchHit(BaseModel):
-    """  """
+    """ 一个音频搜索中单个分段的信息 """
     audio_id: str
     segment_id: str
     start_ms: int
@@ -42,5 +42,5 @@ class AudioSearchResp(BaseModel):
     """ 音频搜索的响应体 """
     q: str
     k: int
-    allowed_visibilities: List[str]
-    hits: List[AudioSearchHit]
+    allowed_visibilities: list[str]
+    hits: list[AudioSearchHit]
