@@ -158,7 +158,7 @@ async def ingest_audio(
         segments=len(segment_rows),
     )
 
-# todo: 写文档
+
 @audio_router.get("/search", response_model=AudioSearchResp)
 def search_audio(
         request: Request,
@@ -168,7 +168,7 @@ def search_audio(
     """
     查询与 q 最近的 k 个向量（文档）
 
-    :param request:
+    :param request: HTTP 的请求对象
     :param q: 查询键
     :param k: 最邻近的 k 个
     :return: AudioSearchResp
@@ -223,6 +223,7 @@ def get_audio(audio_id: str):
 
     return row
 
+
 # todo: 是否加 current_user
 @audio_router.get("/{audio_id}/clip")
 def get_audio_clip(
@@ -230,17 +231,24 @@ def get_audio_clip(
         background_tasks: BackgroundTasks,
         start_ms: Optional[int] = Query(default=None, ge=0),
         end_ms: Optional[int] = Query(default=None, ge=0),
+        max_clip_ms: int = 300_000,
         segment_id: Optional[str] = Query(default=None)
 ):
     """
+    通过 audio_id 查询音频
+    接下来，
+        - 如果segment_id 给出，将这段音频按照 segment_id 裁剪成 MP3
+        - 如果 segment_id 未给出，则根据 start_ms 和 end_ms 裁剪音频，最大裁剪时长由 max_clip_ms 指定
+    最终，裁剪成功并且在服务端发出响应之后进行 background_tasks
 
 
-    :param audio_id:
-    :param background_tasks:
-    :param start_ms:
-    :param end_ms:
-    :param segment_id:
-    :return:
+    :param audio_id: 音频 ID
+    :param background_tasks: 后台任务（服务端响应成功发送之后执行）
+    :param start_ms: 开始的毫秒数，当 segment_id 为 None 时必须指定
+    :param end_ms: 结束的毫秒数，当 segment_id 为 None 时必须指定
+    :param max_clip_ms: 最大的裁剪时长（毫秒），默认 5 分钟（300_000 毫秒）
+    :param segment_id: 音频分段的 ID，格式应为 "audio_id:segment_index"
+    :return: FileResponse, 文件的“流式”响应
     """
 
     row = get_audio_document(audio_id)
@@ -271,7 +279,6 @@ def get_audio_clip(
     if end_ms <= start_ms:
         raise HTTPException(status_code=400, detail="结束时间必须大于开始时间")
 
-    max_clip_ms = 5 * 60 * 1000
     if (end_ms - start_ms) > max_clip_ms:
         raise HTTPException(status_code=400, detail=f"裁剪时间不能超过 {int(max_clip_ms / 1000)} s")
 

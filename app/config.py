@@ -35,8 +35,8 @@ class Setting(BaseModel):
 
     # ================= 音频处理配置 =========================
     # ffmpeg 用于转码/处理
-    ffmpeg_cmd = os.getenv("FFMPEG_CMD", "/home/supercao/Downloads/ffmpeg-master-latest-linux64-gpl/bin/ffmpeg")
+    ffmpeg_cmd: str = os.getenv("FFMPEG_CMD", "/home/supercao/Downloads/ffmpeg-master-latest-linux64-gpl/bin/ffmpeg")
     # ffprobe 用于查看媒体的信息
-    ffprobe_cmd = os.getenv("FFPROBE_CMD", "/home/supercao/Downloads/ffmpeg-master-latest-linux64-gpl/bin/ffprobe")
+    ffprobe_cmd: str = os.getenv("FFPROBE_CMD", "/home/supercao/Downloads/ffmpeg-master-latest-linux64-gpl/bin/ffprobe")
 
 settings = Setting()

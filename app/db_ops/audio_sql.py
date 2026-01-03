@@ -110,7 +110,7 @@ def get_audio_segment(audio_id: str, segment_idx: int):
     :return: 音频信息
     """
     sql = """
-          SELECT audio_id, segment_idx, start_ms, end_ms, text 
+          SELECT audio_id, segment_idx, start_ms, end_ms, texts 
           FROM audio_segments WHERE audio_id=%s AND segment_idx=%s LIMIT 1
           """
     with get_conn() as conn:

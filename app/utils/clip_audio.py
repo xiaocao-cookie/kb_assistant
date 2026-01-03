@@ -7,7 +7,7 @@ def ensure_dir(p: Path) -> None:
     """ 确保路径 p 存在，如不存在则创建 """
     p.mkdir(parents=True, exist_ok=True)
 
-# todo: 写文档
+
 def clip_audio_to_mp3(
         src_path: Path,
         dst_path: Path,
@@ -18,16 +18,18 @@ def clip_audio_to_mp3(
         bitrate: str = "96k"
 ) -> None:
     """
+    将 src_path 对应的音频文件裁剪成 MP3 文件，并将其输出到 dst_path 路径下
+    裁剪的区间为 [start_ms, end_ms]，输出 MP3 文件的采样率、声道数和码率分别为 sample_rate、channels 和 bitrate
 
 
-    :param src_path:
-    :param dst_path:
-    :param start_ms:
-    :param end_ms:
-    :param sample_rate:
-    :param channels:
-    :param bitrate:
-    :return:
+    :param src_path: 原音频文件路径，需被 ffmpeg 识别
+    :param dst_path: 目标 MP3 音频文件路径
+    :param start_ms: 裁剪的开始时间（毫秒）
+    :param end_ms: 裁剪的结束时间（毫秒）
+    :param sample_rate: 输出的采样率
+    :param channels: 输出的声道数
+    :param bitrate: 输出的码率
+    :return: 如果成功，则返回 None，否则引发异常
     """
 
     ensure_dir(dst_path.parent)
