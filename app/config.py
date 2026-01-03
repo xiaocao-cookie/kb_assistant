@@ -39,4 +39,8 @@ class Setting(BaseModel):
     # ffprobe 用于查看媒体的信息
     ffprobe_cmd: str = os.getenv("FFPROBE_CMD", "/home/supercao/Downloads/ffmpeg-master-latest-linux64-gpl/bin/ffprobe")
 
+    # ================= 异步调度 =========================
+    celery_broker_url: str = os.getenv("CELERY_BROKER_URL", "amqp://cao:123456@127.0.0.1:5672/%2F")
+    celery_audio_queue: str = "audio"
+
 settings = Setting()

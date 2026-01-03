@@ -117,3 +117,64 @@ def get_audio_segment(audio_id: str, segment_idx: int):
         with conn.cursor() as cur:
             cur.execute(sql, (audio_id, int(segment_idx)))
             return cur.fetchone()
+
+
+def update_audio_status(audio_id: str, status: str) -> None:
+    """
+    根据 audio_id 更新对应音频的 status
+
+    :param audio_id: 音频 ID
+    :param status: 音频的状态
+    :return: 如果更新成功，返回 None, 否则引发异常
+    """
+
+    sql = "UPDATE audio_documents SET status=%s WHERE audio_id=%s"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (status, audio_id))
+
+
+def update_audio_indexed(
+        audio_id: str,
+        duration_ms: int,
+        language: str | None,
+        segment_count: int,
+        status: str
+) -> None:
+    """
+    根据 audio_id 更新对应音频的 duration_ms, language, segment_count 和 status
+
+    :param audio_id: 音频 ID
+    :param duration_ms: 音频的时长（毫秒）
+    :param language: 音频的语言
+    :param segment_count: 分段的个数
+    :param status: 音频的状态
+    :return: 如果更新成功，返回 None, 否则引发异常
+    """
+
+    sql = "UPDATE audio_documents SET duration_ms=%s, language=%s, segment_count=%s, status=%s WHERE audio_id=%s"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (
+                int(duration_ms),
+                language,
+                int(segment_count),
+                status,
+                audio_id
+            ))
+
+
+def is_audio_running(audio_id: str) -> bool:
+    """
+    判断 audio_id 对应的音频是否在 queued 或 running 状态
+
+    :param audio_id: 音频 ID
+    :return: 如果在 queued 和 running 状态，返回 True，否则返回 False
+    """
+
+    sql = "SELECT status FROM audio_documents WHERE audio_id=%s LIMIT 1"
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (audio_id,))
+            row = cur.fetchone()
+            return bool(row and row.get("status") in ("queued", "running"))
