@@ -35,7 +35,7 @@ class AudioSearchHit(BaseModel):
     start_ms: int
     end_ms: int
     texts: str
-    score: Optional[float] = None               # todo： 得分属性待使用
+    score: Optional[float] = None
     clip_url: Optional[str] = None              # 可供用户下载的链接
 
 
@@ -45,3 +45,13 @@ class AudioSearchResp(BaseModel):
     k: int
     allowed_visibilities: list[str]
     hits: list[AudioSearchHit]
+
+
+class AudioIngestAsyncResp(BaseModel):
+    """ 音频入库的异步响应 """
+    job_id: str
+    audio_id: str
+    stored_as: str
+    visibility: str
+    celery_task_id: str
+    status_url: str

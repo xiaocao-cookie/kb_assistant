@@ -10,6 +10,6 @@ def audio_similarity_search_for_user(query: str, k: int = 6):
     :return: 文档和可见性
     """
     vs = get_audio_vs()
-    docs = vs.similarity_search(query, k=k, filter={"visibility": 'public'})
+    docs_scores = vs.similarity_search_with_score(query, k=k, filter={"visibility": 'public'})
 
-    return docs, ['public']
+    return docs_scores, ['public']

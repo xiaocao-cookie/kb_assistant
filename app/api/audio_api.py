@@ -28,20 +28,27 @@ from app.db_ops.audio_sql import (
     get_audio_document,
     upsert_audio_document,
     replace_audio_segments,
-    get_audio_segment
+    get_audio_segment,
+    is_audio_running
 )
 from app.rag.audio_retrieve import audio_similarity_search_for_user
-from app.ingestion.audio_loader import transcode_to_wav_16k_mono, ffprobe_duration_ms
-from app.utils.asr import ASR
-from app.utils.audio_segmenter import merge_by_max_duration
-from app.ingestion.doc_loader import batch_chunks
 from app.model.auth_model import UserInDB
 from app.utils.clip_audio import clip_audio_to_mp3
+from app.config import settings
+from app.db_ops.audio_job_sql import (
+    create_job,
+    bind_task,
+    get_job,
+    request_cancel
+)
+from app.tasks.audio_tasks import audio_ingest_task
+from app.model.audio_model import AudioIngestAsyncResp
+from app.model.audio_job_model import AudioJobResp
 
 
 audio_router = APIRouter(
     prefix="/audio",
-    tags=["音频检索路由"],
+    tags=["音频处理路由"],
     dependencies=
     [
         Depends(require_permission(Permission.PERM_KB_MANAGE_DOCS)),
@@ -49,16 +56,22 @@ audio_router = APIRouter(
 )
 
 
-AUDIO_DIR = Path("data/audio")      # todo: 作 OS 对象存储
-AUDIO_WAV_DIR = Path("data/audio_wav")
-CLIP_DIR = Path("data/audio_clips")     # todo： 作对象存储
+def _normalize_visibility(v: str) -> str:
+    v = (v or "").strip().lower()
+    if v in ("public", "internal"):
+        return v
+    return "public"
 
 
-@audio_router.post("/ingest", response_model=AudioIngestResp)
+# todo: 文档重写
+@audio_router.post("/ingest", response_model=AudioIngestAsyncResp)
 async def ingest_audio(
         file: UploadFile = File(...),
+        visibility: str = Form("public"),
         audio_id: Optional[str] = Form(None),
         language: Optional[str] = Form(None),
+        overwrite: bool = Form(False),
+        delete_old_file: bool = Form(False),
         current_user: UserInDB = Depends(get_current_user)
 ):
     """
@@ -68,8 +81,11 @@ async def ingest_audio(
     3. 将文件的一些元数据 upsert 到 audio_documents 的数据库中
 
     :param file: 原文件
+    :param visibility:
     :param audio_id: 音频 ID
     :param language: 音频的语言
+    :param overwrite:
+    :param delete_old_file:
     :param current_user: 当前登录用户
     :return: AudioIngestResp
     """
@@ -77,85 +93,62 @@ async def ingest_audio(
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名为空")
 
-    visibility = "public"
+    visibility = _normalize_visibility(visibility or "public")
     audio_id = (audio_id or f"aud-{uuid.uuid4().hex[:12]}").strip()
+    job_id = f"job-{uuid.uuid4().hex[:12]}"
 
-    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    if is_audio_running(audio_id):
+        raise HTTPException(status_code=409, detail=f"该音频在消息队列中不是 RUNNING 状态")
+
+    row = get_audio_document(audio_id)
+    if row and not overwrite:
+        raise HTTPException(status_code=409, detail="该音频已存在，若想重写，请设置 overwrite=True")
+
+    old_stored_path = row["stored_path"] if row else None
+
+    settings.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     suffix = Path(file.filename).suffix or ".bin"
-    raw_path = AUDIO_DIR / f"{int(time.time())}_{uuid.uuid4().hex}{suffix}"
+    raw_path = settings.AUDIO_DIR / f"{int(time.time())}_{uuid.uuid4().hex}{suffix}"
     raw_bytes = await file.read()
     if not raw_bytes:
         raise HTTPException(status_code=400, detail="文件中无内容")
     raw_path.write_bytes(raw_bytes)
 
-    AUDIO_WAV_DIR.mkdir(parents=True, exist_ok=True)
-    wav_path = AUDIO_WAV_DIR / f"{audio_id}.wav"
-    transcode_to_wav_16k_mono(raw_path, wav_path)
-
-    duration_ms = ffprobe_duration_ms(wav_path)
-
-    asr = ASR(model_name="base", device="cpu", compute_type="int8")
-    asr_segs, detected_lang = asr.transcribe(str(wav_path), language=language)
-    lang = language or detected_lang
-
-    chunks = merge_by_max_duration(asr_segs, max_ms=25_000, min_ms=6_000)
-
-    vs = get_audio_vs()
-
-    docs: list[Document] = []
-    segment_rows: list[dict] = []
-    for idx, c in enumerate(chunks):
-        seg_id = f"{audio_id}:{idx}"
-        text = c.text.strip()
-        if not text:
-            continue
-
-        meta = {
-            "doc_type": "audio",
-            "audio_id": audio_id,
-            "segment_id": seg_id,
-            "segment_idx": idx,
-            "start_ms": c.start_ms,
-            "end_ms": c.end_ms,
-            "visibility": visibility,
-            "original_filename": file.filename,
-            "stored_path": str(raw_path),
-            "wav_path": str(wav_path),
-            "language": lang,
-        }
-        docs.append(Document(page_content=text, metadata=meta))
-        segment_rows.append(
-            {"segment_idx": idx, "start_ms": c.start_ms, "end_ms": c.end_ms, "text": text}
-        )
-
-    if not docs:
-        raise HTTPException(status_code=400, detail="无转换")
-
-    for batch in batch_chunks(docs, 64):
-        vs.add_documents(batch)
-
     upsert_audio_document(
         audio_id=audio_id,
         original_filename=file.filename,
         stored_path=str(raw_path),
-        duration_ms=duration_ms,
-        language=lang,
+        duration_ms=0,
+        language=language,
         visibility=visibility,
-        status="indexed",
-        uploader_user_id=int(current_user.id),
-        uploader_username=current_user.username,
-        segment_count=len(segment_rows),
+        status="queued",
+        uploader_user_id=int(getattr(current_user, "id", 0) or 0) or None,
+        uploader_username=getattr(current_user, "username", None),
+        segment_count=0
     )
 
-    replace_audio_segments(audio_id, segment_rows)
+    create_job(
+        job_id,
+        audio_id,
+        overwrite=bool(overwrite),
+        delete_old_file=bool(delete_old_file),
+        old_stored_path=old_stored_path if overwrite else None
+    )
 
-    return AudioIngestResp(
+    async_result = audio_ingest_task.apply_async(
+        args=[job_id, audio_id],
+        queue=getattr(settings, "celery_audio_queue", "audio")
+    )
+
+    bind_task(job_id, async_result.id)
+
+    return AudioIngestAsyncResp(
+        job_id=job_id,
         audio_id=audio_id,
         stored_as=str(raw_path),
-        duration_ms=duration_ms,
-        language=lang,
         visibility=visibility,
-        segments=len(segment_rows),
+        celery_task_id=async_result.id,
+        status_url=f"/audio/jobs/{job_id}",
     )
 
 
@@ -174,19 +167,20 @@ def search_audio(
     :return: AudioSearchResp
     """
 
-    docs, allowed = audio_similarity_search_for_user(q, k=k)
+    docs_scores, allowed = audio_similarity_search_for_user(q, k=k)
 
     base_url = str(request.base_url).rstrip("/")
 
     hits: list[AudioSearchHit] = []
 
-    for d in docs:
-        m = d.metadata or {}
+    for doc, score in docs_scores:
+        m = doc.metadata or {}
 
         audio_id = str(m.get("audio_id", "") or "")
         segment_id = str(m.get("segment_id", "") or "")
         start_ms = int(m.get("start_ms", 0) or 0)
         end_ms = int(m.get("end_ms", 0) or 0)
+        texts = (doc.page_content or "").strip()
 
         if audio_id and end_ms > start_ms:
             clip_url = f"{base_url}/audio/{audio_id}/clip?start_ms={start_ms}&end_ms={end_ms}"
@@ -199,8 +193,8 @@ def search_audio(
                 segment_id=segment_id,
                 start_ms=start_ms,
                 end_ms=end_ms,
-                texts=d.page_content,
-                score=None,
+                texts=texts,
+                score=float(score) if score is not None else None,
                 clip_url=clip_url
             )
         )
@@ -286,9 +280,9 @@ def get_audio_clip(
     if not src_path.exists():
         raise HTTPException(status_code=400, detail="磁盘上存储的音频文件丢失")
 
-    CLIP_DIR.mkdir(parents=True, exist_ok=True)
+    settings.CLIP_DIR.mkdir(parents=True, exist_ok=True)
     clip_name = f"{audio_id}_{start_ms}_{end_ms}_{uuid.uuid4().hex[:8]}.mp3"
-    clip_path = CLIP_DIR / clip_name
+    clip_path = settings.CLIP_DIR / clip_name
 
     try:
         clip_audio_to_mp3(
@@ -309,3 +303,30 @@ def get_audio_clip(
     )
 
 
+@audio_router.get("/jobs/{job_id}", response_model=AudioJobResp)
+def get_audio_job(job_id: str):
+    """
+    通过 job_id 获取对应的音频入库任务的信息
+
+    :param job_id: 任务 ID
+    :return: AudioJobResp
+    """
+    row = get_job(job_id)
+    if not row:
+        raise HTTPException(status_code=404, detail=f"任务ID {job_id} 对应的任务不存在")
+    return row
+
+
+@audio_router.post("/jobs/{job_id}/cancel")
+def cancel_audio_job(job_id: str):
+    """
+    根据 job_id 将对应任务的 cancel_requested 字段设置为 1
+
+    :param job_id:
+    :return:
+    """
+
+    ok = request_cancel(job_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="任务未找到")
+    return {"job_id": job_id, "cancel_requested": True}

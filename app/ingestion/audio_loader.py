@@ -8,6 +8,20 @@ def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 
+def _run(cmd: list[str]) -> str:
+    """
+    运行 cmd，如果不成功则抛出异常
+
+    :param cmd: 命令行程序
+    """
+
+    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if p.returncode != 0:
+        raise RuntimeError(f"Command failed: {' '.join(cmd)}\nSTDERR:\n{p.stderr[:2000]}")
+
+    return p.stdout
+
+
 def ffprobe_duration_ms(src: Path) -> int:
     """
     通过 ffprobe 获取 src(音/视频) 文件的时长，以 ms 返回
@@ -23,7 +37,7 @@ def ffprobe_duration_ms(src: Path) -> int:
         "-of", "default=noprint_wrappers=1:nokey=1",
         str(src),
     ]
-    out = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8").strip()
+    out = _run(cmd)
     if not out:
         return 0
     sec = float(out)
@@ -44,9 +58,10 @@ def transcode_to_wav_16k_mono(src: Path, dst: Path) -> None:
         settings.ffmpeg_cmd,
         "-y",
         "-i", str(src),
-        "-ac", "1",
-        "-ar", "16000",
+        "-ac", str(settings.TARGET_CH),
+        "-ar", str(settings.TARGET_SR),
         "-vn",
+        "-f", "wav",
         str(dst),
     ]
-    subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    _run(cmd)

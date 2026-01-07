@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 from pydantic import BaseModel
 import os
+from pathlib import Path
 
 load_dotenv()
 
@@ -38,6 +39,31 @@ class Setting(BaseModel):
     ffmpeg_cmd: str = os.getenv("FFMPEG_CMD", "/home/supercao/Downloads/ffmpeg-master-latest-linux64-gpl/bin/ffmpeg")
     # ffprobe 用于查看媒体的信息
     ffprobe_cmd: str = os.getenv("FFPROBE_CMD", "/home/supercao/Downloads/ffmpeg-master-latest-linux64-gpl/bin/ffprobe")
+
+    TARGET_SR: int = int(os.getenv("AUDIO_SR", "16000"))                     # Sample Rate 采样率
+    TARGET_CH: int = int(os.getenv("AUDIO_CH", "1"))                         # Channel 通道数
+
+    VAD_MODE: int = int(os.getenv("VAD_MODE", "2"))
+    VAD_FRAME_MS: int = int(os.getenv("VAD_FRAME_MS", "30"))                 # 每帧音频长度（ms）
+    VAD_PADDING_MS: int = int(os.getenv("VAD_PADDING_MS", "300"))            # 每段语音前后保留的额外时间（ms）
+    VAD_MIN_SPEECH_MS: int = int(os.getenv("VAD_MIN_SPEECH_MS", "500"))      # 被认为是语音的最短时间（ms）
+    VAD_MERGE_GAP_MS: int = int(os.getenv("VAD_MERGE_GAP_MS", "250"))        # 相邻语音段合并的最大间隔（ms）
+
+    ASR_MODEL: str = os.getenv("ASR_MODEL", "base")
+    ASR_DEVICE: str = os.getenv("ASR_DEVICE", "cpu")
+    ASR_COMPUTE_TYPE: str = os.getenv("ASR_COMPUTE_TYPE", "int8")
+
+    MAX_CHUNK_MS: int = int(os.getenv("AUDIO_MAX_CHUNK_MS", "25000"))
+    MIN_CHUNK_MS: int = int(os.getenv("AUDIO_MIN_CHUNK_MS", "6000"))
+    MAX_CHARS_PER_CHUNK: int = int(os.getenv("AUDIO_MAX_CHARS_PER_CHUNK", "900"))
+
+    PUNCT_END: set = set("。.!?！？；;")                                     # 常见标点符号
+
+    MAX_SPEECH_SEGMENTS: int = int(os.getenv("AUDIO_MAX_SPEECH_SEGMENTS", "2000"))
+
+    AUDIO_DIR: Path = Path("data/audio")  # todo: 作 OS 对象存储
+    AUDIO_WAV_DIR: Path = Path("data/audio_wav")
+    CLIP_DIR: Path = Path("data/audio_clips")  # todo： 作对象存储
 
     # ================= 异步调度 =========================
     celery_broker_url: str = os.getenv("CELERY_BROKER_URL", "amqp://cao:123456@127.0.0.1:5672/%2F")
