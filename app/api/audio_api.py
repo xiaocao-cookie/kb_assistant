@@ -31,7 +31,7 @@ from app.db_ops.audio_sql import (
     get_audio_segment,
     is_audio_running
 )
-from app.rag.audio_retrieve import audio_similarity_search_for_user
+from app.rag.audio_retrieve import audio_similarity_search
 from app.model.auth_model import UserInDB
 from app.utils.clip_audio import clip_audio_to_mp3
 from app.config import settings
@@ -44,6 +44,8 @@ from app.db_ops.audio_job_sql import (
 from app.tasks.audio_tasks import audio_ingest_task
 from app.model.audio_model import AudioIngestAsyncResp
 from app.model.audio_job_model import AudioJobResp
+from app.utils.path_utils import ensure_dir
+from app.utils.visibility_validation import parse_visibility
 
 
 audio_router = APIRouter(
@@ -56,14 +58,9 @@ audio_router = APIRouter(
 )
 
 
-def _normalize_visibility(v: str) -> str:
-    v = (v or "").strip().lower()
-    if v in ("public", "internal"):
-        return v
-    return "public"
+# todo: 此模块考虑添加一个 音频知识库 重建功能
 
-
-# todo: 文档重写
+# todo: 此函数文档重写
 @audio_router.post("/ingest", response_model=AudioIngestAsyncResp)
 async def ingest_audio(
         file: UploadFile = File(...),
@@ -81,11 +78,11 @@ async def ingest_audio(
     3. 将文件的一些元数据 upsert 到 audio_documents 的数据库中
 
     :param file: 原文件
-    :param visibility:
+    :param visibility: 可见性
     :param audio_id: 音频 ID
     :param language: 音频的语言
-    :param overwrite:
-    :param delete_old_file:
+    :param overwrite: 是否重写
+    :param delete_old_file: 是否删除旧文件
     :param current_user: 当前登录用户
     :return: AudioIngestResp
     """
@@ -93,7 +90,7 @@ async def ingest_audio(
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名为空")
 
-    visibility = _normalize_visibility(visibility or "public")
+    visibility = parse_visibility(visibility)
     audio_id = (audio_id or f"aud-{uuid.uuid4().hex[:12]}").strip()
     job_id = f"job-{uuid.uuid4().hex[:12]}"
 
@@ -106,7 +103,7 @@ async def ingest_audio(
 
     old_stored_path = row["stored_path"] if row else None
 
-    settings.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    ensure_dir(settings.AUDIO_DIR)
     suffix = Path(file.filename).suffix or ".bin"
     raw_path = settings.AUDIO_DIR / f"{int(time.time())}_{uuid.uuid4().hex}{suffix}"
     raw_bytes = await file.read()
@@ -167,7 +164,7 @@ def search_audio(
     :return: AudioSearchResp
     """
 
-    docs_scores, allowed = audio_similarity_search_for_user(q, k=k)
+    docs_scores, allowed = audio_similarity_search(q, k=k)
 
     base_url = str(request.base_url).rstrip("/")
 
@@ -218,7 +215,7 @@ def get_audio(audio_id: str):
     return row
 
 
-# todo: 是否加 current_user
+# todo: 此函数文档说明
 @audio_router.get("/{audio_id}/clip")
 def get_audio_clip(
         audio_id: str,
@@ -280,7 +277,7 @@ def get_audio_clip(
     if not src_path.exists():
         raise HTTPException(status_code=400, detail="磁盘上存储的音频文件丢失")
 
-    settings.CLIP_DIR.mkdir(parents=True, exist_ok=True)
+    ensure_dir(settings.CLIP_DIR)
     clip_name = f"{audio_id}_{start_ms}_{end_ms}_{uuid.uuid4().hex[:8]}.mp3"
     clip_path = settings.CLIP_DIR / clip_name
 

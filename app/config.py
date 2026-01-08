@@ -21,11 +21,6 @@ class Setting(BaseModel):
     chroma_dir: str = os.getenv("CHROMA_DIR", "./data/chroma")
     chroma_host: str = os.getenv("CHROMA_HOST", "localhost")
     chroma_port: int = int(os.getenv("CHROMA_PORT", "8000"))
-    collection_name: str = os.getenv("COLLECTION_NAME", "knowledge_base")
-    audio_collection_name: str = os.getenv("AUDIO_COLLECTION_NAME", "audio_base")
-
-    chunk_size: int = int(os.getenv("CHUNK_SIZE", "800"))
-    chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "120"))
 
     # ================= MySql 数据库 =========================
     MYSQL_HOST: str = os.getenv("MYSQL_HOST", "127.0.0.1")
@@ -34,7 +29,16 @@ class Setting(BaseModel):
     MYSQL_PASSWORD: str = os.getenv("MYSQL_PASSWORD", "123456")
     MYSQL_DB: str = os.getenv("MYSQL_DB", "kb_assistant")
 
+    # ================= 知识库处理配置 =========================
+    collection_name: str = os.getenv("COLLECTION_NAME", "knowledge_base")
+    DATA_DOCS_DIR: Path = Path("/home/supercao/PycharmProjects/kb_assistant/data/docs")
+    chunk_size: int = int(os.getenv("CHUNK_SIZE", "800"))
+    chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "120"))
+
+
     # ================= 音频处理配置 =========================
+    audio_collection_name: str = os.getenv("AUDIO_COLLECTION_NAME", "audio_base")
+
     # ffmpeg 用于转码/处理
     ffmpeg_cmd: str = os.getenv("FFMPEG_CMD", "/home/supercao/Downloads/ffmpeg-master-latest-linux64-gpl/bin/ffmpeg")
     # ffprobe 用于查看媒体的信息

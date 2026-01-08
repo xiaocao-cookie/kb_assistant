@@ -41,6 +41,9 @@ from app.rag.chroma_admin import (
     update_visibility_by_doc_id,
     count_by_doc_id
 )
+from app.config import settings
+from app.utils.path_utils import ensure_dir
+from app.utils.visibility_validation import parse_visibility
 
 kb_router = APIRouter(
     prefix="/kb",
@@ -51,20 +54,6 @@ kb_router = APIRouter(
 )
 
 
-DATA_DOCS_DIR = Path(r"/home/supercao/PycharmProjects/kb_assistant/data/docs")
-DATA_DOCS_DIR.mkdir(parents=True, exist_ok=True)            # 若不存在 → 自动递归创建所有目录
-
-
-def parse_visibility(v: str) -> str:
-    """
-    解析，规范化可见性参数
-    """
-    v = (v or "").strip().upper()
-    print(get_allowed_visibilities())
-    if v not in get_allowed_visibilities():
-        print(f"================{v}===========================")
-        raise HTTPException(status_code=400, detail=f"无效的可见性 {v}")
-    return v
 
 
 @kb_router.post("/ingest")
@@ -105,7 +94,8 @@ async def ingest(
 
     suffix = Path(file.filename).suffix
     safe_name = f"{int(time.time())}_{uuid.uuid4().hex}{suffix}"
-    save_path = DATA_DOCS_DIR / safe_name
+    ensure_dir(settings.DATA_DOCS_DIR)
+    save_path = settings.DATA_DOCS_DIR / safe_name
 
     content = await file.read()
     if not content:
@@ -228,7 +218,8 @@ async def ingest_batch(
 
             suffix = Path(file.filename).suffix
             safe_name = f"{int(time.time())}_{uuid.uuid4().hex}{suffix}"
-            save_path = DATA_DOCS_DIR / safe_name
+            ensure_dir(settings.DATA_DOCS_DIR)
+            save_path = settings.DATA_DOCS_DIR / safe_name
 
             content = await file.read()
             if not content:
@@ -300,6 +291,7 @@ async def ingest_batch(
     }
 
 
+# todo： 重建 知识库文档时 同步 MySQL 中的信息
 @kb_router.post("/reindex")
 def reindex(visibility_default: str = Form("public")):
     """
@@ -319,7 +311,8 @@ def reindex(visibility_default: str = Form("public")):
     client.get_or_create_collection(settings.collection_name)
 
     vs = get_vs()
-    raw_docs = load_docs(str(DATA_DOCS_DIR))
+    ensure_dir(settings.DATA_DOCS_DIR)
+    raw_docs = load_docs(str(settings.DATA_DOCS_DIR))
     if not raw_docs:
         return {"chunks": 0, "docs": 0, "messages": "在data/docs下没找到任何文件"}
 

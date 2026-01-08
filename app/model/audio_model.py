@@ -38,7 +38,7 @@ class AudioSearchHit(BaseModel):
     score: Optional[float] = None
     clip_url: Optional[str] = None              # 可供用户下载的链接
 
-
+# todo: 考虑 allowed_visibilities 的合理性
 class AudioSearchResp(BaseModel):
     """ 音频搜索的响应体 """
     q: str
@@ -53,5 +53,5 @@ class AudioIngestAsyncResp(BaseModel):
     audio_id: str
     stored_as: str
     visibility: str
-    celery_task_id: str
+    celery_task_id: Optional[str] = None
     status_url: str

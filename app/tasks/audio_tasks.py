@@ -34,7 +34,7 @@ def _check_cancel(job_id: str):
 # todo: 补充文档
 @celery_app.task(
     bind=True,
-    autoretry_for=(IOError, ),
+    autoretry_for=(IOError, ),                  # todo: 异常优化
     retry_backoff=True,
     retry_jitter=True,
     retry_kwargs={"max_retries": 3}

@@ -32,18 +32,6 @@ class AsrSeg:
     text: str
 
 
-# def _prog(cb: Optional[ProgressFn], p: int, m: str) -> None:
-#     """
-#
-#     :param cb:
-#     :param p:
-#     :param m:
-#     :return:
-#     """
-#
-#     if cb:
-#         cb(int(p), str(m))
-
 def _prog(cb: Optional[ProgressFn], p: int, m: str, length: int = 20) -> None:
     """
     显示带进度条的日志

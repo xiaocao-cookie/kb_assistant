@@ -2,10 +2,7 @@ import subprocess
 from pathlib import Path
 
 from app.config import settings
-
-def ensure_dir(p: Path) -> None:
-    """ 确保 p 存在，若不存在则创建 """
-    p.mkdir(parents=True, exist_ok=True)
+from app.utils.path_utils import ensure_dir
 
 
 def _run(cmd: list[str]) -> str:

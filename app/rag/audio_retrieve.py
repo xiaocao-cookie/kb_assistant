@@ -1,7 +1,7 @@
 from app.deps import get_audio_vs
 
-# todo： 考虑参数中加一个 current_user, 函数名称是否要修改
-def audio_similarity_search_for_user(query: str, k: int = 6):
+#  todo: 函数的用法待优化
+def audio_similarity_search(query: str, k: int = 6):
     """
     搜索与 query 最近的 k 个向量(文档)
 

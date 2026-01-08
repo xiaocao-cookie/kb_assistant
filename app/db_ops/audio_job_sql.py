@@ -157,10 +157,9 @@ def mark_cancelled(job_id: str, message: str = "cancelled") -> None:
             cur.execute(sql, (message, job_id),)
 
 
-# todo： 明确文档
 def get_job_flags(job_id: str) -> dict:
     """
-
+    获取 job_id 对应的一些状态/标志
 
     :param job_id: 音频入库任务的 ID
     :return: 对应任务的信息
