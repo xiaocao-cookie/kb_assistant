@@ -61,9 +61,9 @@ class Setting(BaseModel):
 
     MAX_SPEECH_SEGMENTS: int = int(os.getenv("AUDIO_MAX_SPEECH_SEGMENTS", "2000"))
 
-    AUDIO_DIR: Path = Path("data/audio")  # todo: 作 OS 对象存储
-    AUDIO_WAV_DIR: Path = Path("data/audio_wav")
-    CLIP_DIR: Path = Path("data/audio_clips")  # todo： 作对象存储
+    AUDIO_DIR: Path = Path("/home/supercao/PycharmProjects/kb_assistant/app/data/audio")  # todo: 作 OS 对象存储
+    AUDIO_WAV_DIR: Path = Path("/home/supercao/PycharmProjects/kb_assistant/app/data/audio_wav")
+    CLIP_DIR: Path = Path("/home/supercao/PycharmProjects/kb_assistant/app/data/audio_clips")  # todo： 作对象存储
 
     # ================= 异步调度 =========================
     celery_broker_url: str = os.getenv("CELERY_BROKER_URL", "amqp://cao:123456@127.0.0.1:5672/%2F")

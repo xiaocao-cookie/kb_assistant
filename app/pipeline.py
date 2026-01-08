@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Optional, Any, Dict, Callable, List
 from dataclasses import dataclass
 import math
+import logging
 
 import numpy as np
 import soundfile as sf
@@ -31,17 +32,40 @@ class AsrSeg:
     text: str
 
 
-def _prog(cb: Optional[ProgressFn], p: int, m: str) -> None:
-    """
+# def _prog(cb: Optional[ProgressFn], p: int, m: str) -> None:
+#     """
+#
+#     :param cb:
+#     :param p:
+#     :param m:
+#     :return:
+#     """
+#
+#     if cb:
+#         cb(int(p), str(m))
 
-    :param cb:
-    :param p:
-    :param m:
-    :return:
+def _prog(cb: Optional[ProgressFn], p: int, m: str, length: int = 20) -> None:
     """
+    显示带进度条的日志
+
+    :param cb: 回调函数
+    :param p: 百分比 0-100
+    :param m: 消息
+    :param length: 进度条长度（字符数）
+    """
+    # 计算完成块数
+    done_blocks = int(p / 100 * length)
+    GREEN = "\033[92m"
+    RESET = "\033[0m"
+    bar = GREEN + "#" * done_blocks + RESET + "-" * (length - done_blocks)
+    msg = f"\n[{bar}] {p:3d}% {m}\n"
 
     if cb:
         cb(int(p), str(m))
+
+    # 直接打印到日志
+    logging.getLogger("app.tasks.audio_tasks").info(msg)
+
 
 
 def _read_wav_mono_16k(path: Path) -> np.ndarray:
@@ -391,17 +415,22 @@ def run_audio_ingest_pipeline(
             "visibility": visibility,
             "original_filename": original_filename,
         }
+
         docs.append(Document(page_content=text, metadata=meta))
         ids.append(seg_id)
 
-        _prog(on_progress, 90, "写入 MySql 数据库...")
-        _db_replace_segments(audio_id, rows)
 
-        _prog(on_progress, 93, "写入 Chroma 数据库...")
-        vs = get_audio_vs()
-        _vs_add(vs, docs, ids)
+    # 一次性写 MySQL
+    _prog(on_progress, 90, "写入 MySql 数据库...")
+    _db_replace_segments(audio_id, rows)
 
-        _prog(on_progress, 100, "任务已完成！！！")
+    # 一次性写 Chroma 向量库
+    _prog(on_progress, 93, "写入 Chroma 数据库...")
+    vs = get_audio_vs()
+    _vs_add(vs, docs, ids)
+
+    # 完成
+    _prog(on_progress, 100, "任务已完成！！！")
 
     return {
         "audio_id": audio_id,

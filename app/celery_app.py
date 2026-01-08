@@ -1,14 +1,21 @@
+import logging
+
 from celery import Celery
 from app.config import settings
 
 
-celery_app = Celery("kb_assistant", broker=settings.celery_broker_url)
+celery_app = Celery(
+    "kb_assistant",
+    broker=settings.celery_broker_url
+)
 
 
-# _existing = tuple(celery_app.conf.get("imports") or ())
-#
-# if "app.tasks.audio_tasks" not in _existing:
-#     celery_app.conf.imports = _existing + ("app.tasks.audio_tasks", )
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("chromadb").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("faster_whisper").setLevel(logging.WARNING)
+
 
 celery_app.conf.update(
     task_acks_late=True,
@@ -17,4 +24,4 @@ celery_app.conf.update(
     timezone="UTC"
 )
 
-celery_app.autodiscover_tasks(["app.tasks"])
+celery_app.autodiscover_tasks(["app.tasks"], related_name="audio_tasks")

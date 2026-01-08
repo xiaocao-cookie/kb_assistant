@@ -91,7 +91,7 @@ def audio_ingest_task(self, job_id: str, audio_id: str):
         status="indexed"
     )
 
-    update_job(job_id, status=AudioJobStatus.SUCCEEDED, progress=100, message=f"嵌入了 {result['segments']} segments")
+    update_job(job_id, status=AudioJobStatus.SUCCEEDED, progress=100, message=f"嵌入了 {result['segments']} 个 segments")
 
     if delete_old_file and old_path and old_path != str(raw_path):
         try:
