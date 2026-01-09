@@ -16,7 +16,6 @@ from app.ingestion.doc_loader import batch_chunks
 from app.db_ops import audio_sql
 from app.deps import get_audio_vs
 
-# todo: 补充文档
 ProgressFn = Callable[[int, str], None]
 
 @dataclass
@@ -133,11 +132,12 @@ def _vs_add(vs: Any, docs: list[Document], ids: list[str]) -> None:
     raise RuntimeError("向量存储的对象不支持 add_documents/add_texts 方法")
 
 
+# todo: 这个函数应该是 upsert
 def _db_replace_segments(audio_id: str, rows: list[dict[str, Any]]) -> None:
     """
+    使用 rows 替换 audio_id 对应的音频信息 audio_segments
 
-
-    :param audio_id:
+    :param audio_id: 音频 ID
     :param rows:
     :return:
     """
@@ -148,13 +148,13 @@ def _db_replace_segments(audio_id: str, rows: list[dict[str, Any]]) -> None:
 
     raise AttributeError("audio_sql 中无 replace_audio_segments 方法")
 
-
+# todo: 此函数需要再细看
 def detect_speech_segments(wav_path: Path) -> list[SpeechSeg]:
     """
+    使用 webrtcvad 生成的 VAD 对象对 wav_path 对应的音频进行语音活跃度监测，并返回所有检测到的语音片段
 
-
-    :param wav_path:
-    :return:
+    :param wav_path: WAV 文件的路径
+    :return: 语音段的列表，每段为 SpeechSeg(start_ms, end_ms)
     """
 
     audio_ndarray = _read_wav_mono_16k(wav_path)
@@ -215,7 +215,7 @@ def detect_speech_segments(wav_path: Path) -> list[SpeechSeg]:
 
     return merged
 
-
+# todo：此函数仍需细看
 def transcribe_segments(
         wav_path: Path,
         speech: list[SpeechSeg],
@@ -224,13 +224,13 @@ def transcribe_segments(
         on_progress: Optional[ProgressFn]
 ) -> list[AsrSeg]:
     """
+    将 wav_path 下的每个 speech 语音段进行 ASR 转义，并返回识别的结果
 
-
-    :param wav_path:
-    :param speech:
-    :param language:
-    :param on_progress:
-    :return:
+    :param wav_path: WAV 文件的路径
+    :param speech: 识别出有语音的分段
+    :param language: 语言
+    :param on_progress: 进度的回调函数
+    :return: ASR分段的列表，每个分段为 AsrSeg(start_ms, end_ms, text)
     """
 
     if not speech:
@@ -273,12 +273,13 @@ def transcribe_segments(
     return out
 
 
+# todo: 此函数仍需细看
 def merge_asr_to_chunks(asr: list[AsrSeg]) -> list[AsrSeg]:
     """
+    将 ASR 转录后的文本段进行分块合并，方便后续更好的写入向量数据库和 MySql 中
 
-
-    :param asr:
-    :return:
+    :param asr: ASR 转录后的分段列表，每个分段为 AsrSeg(start_ms, end_ms, text)
+    :return: 合并后的分段列表，每个分段为 AsrSeg(start_ms, end_ms, text)
     """
 
     if not asr:
@@ -337,19 +338,24 @@ def run_audio_ingest_pipeline(
         visibility: str,
         language: Optional[str],
         wav_dir: Path,
-        on_progress: Optional[ProgressFn] = None
+        on_progress: Optional[ProgressFn] = None            # todo: 此参数待使用
 ) -> Dict[str, Any]:
     """
+    Celery 中音频上传的流水线，具体有以下几步：
+    1. 将原文件转为 WAV 格式的文件（16KHz 的采样率和单声道）
+    2. 音频 VAD（Voice Activity Detection）处理,也称为去空白
+    3. 使用 ASR 将 VAD 后的音频转录为文本段
+    4. 将转录后的文本段合并为合理的 chunk 大小
+    5. 将这些 chunk 的元数据以及其他信息写入到 MySQL 中
+    6. 将这些 chunk 以及其元数据嵌入到 ChromaDB 中
 
-
-    :param audio_id:
-    :param raw_path:
-    :param original_filename:
-    :param visibility:
-    :param language:
-    :param wav_dir:
-    :param on_progress:
-    :return:
+    :param audio_id: 音频 ID
+    :param raw_path: 原文件的路径
+    :param original_filename: 原文件的文件名
+    :param visibility: 可见性
+    :param language: 音频的语言
+    :param wav_dir: 要存放的 WAV 文件的路径
+    :param on_progress: 进度的回调函数，可供前端生成进度条使用
     """
     if not raw_path.exists():
         raise FileNotFoundError(str(raw_path))
@@ -367,13 +373,13 @@ def run_audio_ingest_pipeline(
     _prog(on_progress, 10, "音频 VAD 处理...")
     speech = detect_speech_segments(wav_path)
 
-    _prog(on_progress, 15, "ASR 转义中...")
+    _prog(on_progress, 15, "ASR 转录中（语音识别 + 分段）...")
     asr = transcribe_segments(wav_path, speech, language=language, on_progress=on_progress)
 
-    _prog(on_progress, 85, "正在将 ASR 转义后的文本分块")
+    _prog(on_progress, 85, "正在将 ASR 转录后的文本段进行分块合并...")
     chunks = merge_asr_to_chunks(asr)
 
-    _prog(on_progress, 88, f"分块数 = {len(chunks)}")
+    _prog(on_progress, 88, f"合并出的分块数为： {len(chunks)}")
 
     rows: List[Dict[str, Any]] = []
     docs: List[Document] = []
@@ -409,11 +415,11 @@ def run_audio_ingest_pipeline(
 
 
     # 一次性写 MySQL
-    _prog(on_progress, 90, "写入 MySql 数据库...")
+    _prog(on_progress, 90, "将数据写入 MySql 数据库...")
     _db_replace_segments(audio_id, rows)
 
     # 一次性写 Chroma 向量库
-    _prog(on_progress, 93, "写入 Chroma 数据库...")
+    _prog(on_progress, 93, "将数据写入 Chroma 数据库...")
     vs = get_audio_vs()
     _vs_add(vs, docs, ids)
 

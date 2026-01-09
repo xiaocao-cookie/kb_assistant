@@ -29,6 +29,7 @@ class ASR:
 
         self.model = WhisperModel(model_name, device=device, compute_type=compute_type)
 
+    # todo: 考虑这个函数的使用场景
     def transcribe(self, wav_path: str, language: Optional[str] = None) -> tuple[list[ASRSegment], Optional[str]]:
         """
         将 wav_path 对应的音频按照 language 解析，生成文本段和语言信息

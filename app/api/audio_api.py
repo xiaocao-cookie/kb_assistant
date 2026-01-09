@@ -60,7 +60,6 @@ audio_router = APIRouter(
 
 # todo: 此模块考虑添加一个 音频知识库 重建功能
 
-# todo: 此函数文档重写
 @audio_router.post("/ingest", response_model=AudioIngestAsyncResp)
 async def ingest_audio(
         file: UploadFile = File(...),
@@ -72,10 +71,12 @@ async def ingest_audio(
         current_user: UserInDB = Depends(get_current_user)
 ):
     """
-    此函数实现了以下三个功能：
+    此函数实现了异步上传音频文件，分为以下几步：
     1. 上传一个音频文件，并将其保存到磁盘
-    2. 将音频转成文本并存储到 Chroma 中名为 audio_base 的 collection 中
-    3. 将文件的一些元数据 upsert 到 audio_documents 的数据库中
+    2. 将音频文件的一些元数据 upsert 到 audio_documents 表中
+    3. 向 audio_jobs 表中新增音频文件上传的任务
+    4. celery 异步任务调用，并将 celery 的任务 ID 与 audio_jobs 表中的 job_id 绑定
+    5. 返回音频异步上传的响应体
 
     :param file: 原文件
     :param visibility: 可见性
@@ -84,7 +85,7 @@ async def ingest_audio(
     :param overwrite: 是否重写
     :param delete_old_file: 是否删除旧文件
     :param current_user: 当前登录用户
-    :return: AudioIngestResp
+    :return: AudioIngestAsyncResp，音频嵌入的异步响应体
     """
 
     if not file.filename:

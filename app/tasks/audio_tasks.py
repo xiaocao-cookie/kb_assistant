@@ -22,7 +22,7 @@ from app.config import settings
 
 def _check_cancel(job_id: str):
     """
-    检查 job_id 对应的任务是否有客户的取消请求
+    检查 job_id 对应的任务是否有客户的取消请求，用来设置 celery 执行任务时的检查点
 
     :param job_id: 任务 ID
     """
@@ -33,7 +33,7 @@ def _check_cancel(job_id: str):
 
 # todo: 补充文档
 @celery_app.task(
-    bind=True,
+    bind=True,                                  # 把此函数变为类的实例方法，第一个参数必须是 ⚠️self!!!
     autoretry_for=(IOError, ),                  # todo: 异常优化
     retry_backoff=True,
     retry_jitter=True,
@@ -41,12 +41,11 @@ def _check_cancel(job_id: str):
 )
 def audio_ingest_task(self, job_id: str, audio_id: str):
     """
+    根据调用 /audio/ingest 生成的 job_id 和 audio_id 异步的进行音频上传的任务，音频信息会同步到 chroma 和 MySql 中
 
-
-    :param self:
-    :param job_id:
-    :param audio_id:
-    :return:
+    :param self: 类实例方法的第一个参数，与装饰器中的 bind=True 联用
+    :param job_id: 任务 ID
+    :param audio_id: 音频 ID
     """
 
     flags = get_job_flags(job_id)

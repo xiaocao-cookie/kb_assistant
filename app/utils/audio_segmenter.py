@@ -9,7 +9,7 @@ class Chunk:
     end_ms: int
     text: str
 
-
+# todo: 考虑这个函数的使用场景
 def merge_by_max_duration(
         segs: list[ASRSegment],
         max_ms: int = 25_000,

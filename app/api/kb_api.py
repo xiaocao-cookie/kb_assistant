@@ -291,7 +291,7 @@ async def ingest_batch(
     }
 
 
-# todo： 重建 知识库文档时 同步 MySQL 中的信息
+# todo： 考虑增加，重建知识库文档时同步 MySQL 中的信息
 @kb_router.post("/reindex")
 def reindex(visibility_default: str = Form("public")):
     """
