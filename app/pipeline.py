@@ -76,8 +76,11 @@ def _float_to_pcm16_bytes(x: np.ndarray) -> bytes:
     """
     将浮点音频波形 x 裁剪到 `[-1.0, 1.0]` 范围内，并将此音频波形转换成 16-bit PCM 的原始字节流
 
-    :param x:
-    :return:
+    PCM： Pulse Code Modulation 脉冲编码调制
+        其作用为，把连续的模拟声音信号，用固定的频率采样，再量化成整数存储
+
+    :param x: soundfile 读取出的音频的 ndarray
+    :return: PCM 的原始字节流
     """
 
     x = np.clip(x, -1.0, 1.0)
@@ -167,13 +170,14 @@ def detect_speech_segments(wav_path: Path) -> list[SpeechSeg]:
     total_frames = len(pcm_bytes) // frame_bytes
 
     def is_speech(i: int) -> bool:
+        """ 判断第 `i` 帧是否有语音 """
         start = i * frame_bytes
         chunk = pcm_bytes[start:start + frame_bytes]
         if len(chunk) < frame_bytes:
             return False
         return vad.is_speech(chunk, sample_rate=settings.TARGET_SR)
 
-    speech_frames: list[tuple[int, int]] = []
+    speech_frames: list[tuple[int, int]] = []           # (start_frame, end_frame) 二元组的列表
     in_speech = False
     seg_start = 0
 
@@ -191,11 +195,11 @@ def detect_speech_segments(wav_path: Path) -> list[SpeechSeg]:
 
     pad_frames = int(math.ceil(settings.VAD_PADDING_MS / settings.VAD_FRAME_MS))
     out: List[SpeechSeg] = []
-    for a, b in speech_frames:
-        a2 = max(0, a - pad_frames)
-        b2 = min(total_frames, b + pad_frames)
-        start_ms = int(a2 * settings.VAD_FRAME_MS)
-        end_ms = int(b2 * settings.VAD_FRAME_MS)
+    for start_frame, end_frame in speech_frames:
+        padded_start_frame = max(0, start_frame - pad_frames)
+        padded_end_frame = min(total_frames, end_frame + pad_frames)
+        start_ms = int(padded_start_frame * settings.VAD_FRAME_MS)
+        end_ms = int(padded_end_frame * settings.VAD_FRAME_MS)
         if (end_ms - start_ms) >= settings.VAD_MIN_SPEECH_MS:
             out.append(SpeechSeg(start_ms=start_ms, end_ms=end_ms))
 
