@@ -15,7 +15,7 @@ from app.db_ops.audio_sql import (
     update_audio_indexed
 )
 from app.constants.audio_job import AudioJobStatus
-from app.rag.chroma_admin import delete_by_audio_id
+from app.service.chroma_audio_service import delete_by_audio_id
 from app.pipeline import run_audio_ingest_pipeline
 from app.config import settings
 

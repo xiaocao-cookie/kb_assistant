@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AudioIngestResp(BaseModel):
@@ -55,3 +55,29 @@ class AudioIngestAsyncResp(BaseModel):
     visibility: str
     celery_task_id: Optional[str] = None
     status_url: str
+
+
+class AudioAskReq(BaseModel):
+    """ 音频 /audio/ask 路由的请求体 """
+    question: str = Field(..., min_length=1)
+    k: int = Field(6, ge=1, le=20)
+    audio_id: Optional[str] = None
+    system_prompt: Optional[str] = None
+
+
+class AudioCitation(BaseModel):
+    """  """
+    audio_id: str
+    segment_id: str
+    start_ms: int
+    end_ms: int
+    text: str
+    clip_url: str
+    score: Optional[float] = None
+
+
+class AudioAskResp(BaseModel):
+    """ 音频 /audio/ask 路由的响应体 """
+    question: str
+    answer: str
+    citations: list[AudioCitation]

@@ -16,14 +16,6 @@ def get_vectorstore(embeddings):
     :param embeddings:
     :return: 一个chroma对象，用于管理和查询嵌入向量
     """
-    # 连接时请先启动chroma
-    # sudo docker run -d \
-    #   --name chroma \
-    #   -p 8000:8000 \
-    #   -e IS_PERSISTENT=TRUE \
-    #   -e PERSIST_DIRECTORY=/chroma/chroma \
-    #   -v /home/supercao/PycharmProjects/kb_assistant/data/chroma:/chroma/chroma \
-    #   chromadb/chroma
 
     return Chroma(
         client=get_client(),

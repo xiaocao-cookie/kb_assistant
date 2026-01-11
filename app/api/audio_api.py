@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Optional
 import uuid
 import time
+import httpx
 
 from fastapi import (APIRouter,
                      HTTPException,
@@ -16,13 +17,20 @@ from fastapi.responses import FileResponse
 from langchain_core.documents import Document
 
 from app.deps import get_audio_vs
-from app.service.rbac_service import require_permission, get_current_user
+from app.service.rbac_service import (
+    require_permission,
+    get_current_user,
+    compute_user_allowed_visibilities
+)
 from app.constants.rbac import Permission
 from app.model.audio_model import (
     AudioDocDetail,
     AudioSearchHit,
     AudioSearchResp,
-    AudioIngestResp
+    AudioIngestResp,
+    AudioAskResp,
+    AudioAskReq,
+    AudioCitation
 )
 from app.db_ops.audio_sql import (
     get_audio_document,
@@ -59,6 +67,67 @@ audio_router = APIRouter(
 
 
 # todo: 此模块考虑添加一个 音频知识库 重建功能
+
+
+def _clip_url(
+        base: str,
+        audio_id: str,
+        start_ms: int,
+        end_ms: int
+) -> str:
+    """ 音频裁剪的链接 """
+    return f"{base}/audio/docs/{audio_id}/clip?start_ms={start_ms}&end_ms={end_ms}"
+
+
+def _openai_chat_complete(*, model: str, api_key: str, messages: list[dict[str, str]], timeout_s: float = 60.0) -> str:
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.2,
+    }
+    with httpx.Client(timeout=timeout_s) as client:
+        r = client.post(url, headers=headers, json=payload)
+        if r.status_code >= 400:
+            raise HTTPException(status_code=500, detail=f"OpenAI error: {r.status_code} {r.text[:300]}")
+        data = r.json()
+    try:
+        return (data["choices"][0]["message"]["content"] or "").strip()
+    except Exception:
+        raise HTTPException(status_code=500, detail="OpenAI response parse error")
+
+
+def _build_rag_messages(question: str, citations: list[AudioCitation], system_prompt: Optional[str]) -> list[
+    dict[str, str]]:
+    sys = (system_prompt or "").strip() or (
+        "你是企业知识库助手，回答必须基于给定的【音频片段】内容。"
+        "如果片段不足以回答，就明确说“不确定/片段中没有”。"
+        "回答要简洁，并在结尾给出引用列表（用 [1][2]... 标注）。"
+    )
+
+    ctx_lines: list[str] = []
+    for i, c in enumerate(citations, start=1):
+        ctx_lines.append(
+            f"[{i}] audio_id={c.audio_id} segment_id={c.segment_id} "
+            f"start_ms={c.start_ms} end_ms={c.end_ms}\n"
+            f"片段文本：{c.text}"
+        )
+    ctx = "\n\n".join(ctx_lines) if ctx_lines else "（无片段）"
+
+    user = (
+        f"问题：{question}\n\n"
+        f"【音频片段】\n{ctx}\n\n"
+        "要求：\n"
+        "1) 只用片段信息回答。\n"
+        "2) 如果引用了某个片段，请用 [序号] 标注。\n"
+        "3) 不要编造片段里没有的信息。"
+    )
+
+    return [
+        {"role": "system", "content": sys},
+        {"role": "user", "content": user},
+    ]
 
 @audio_router.post("/ingest", response_model=AudioIngestAsyncResp)
 async def ingest_audio(
@@ -150,11 +219,13 @@ async def ingest_audio(
     )
 
 
-@audio_router.get("/search", response_model=AudioSearchResp)
-def search_audio(
+# todo: 函数优化
+@audio_router.get("/query", response_model=AudioSearchResp)
+def query_audio(
         request: Request,
         q: str = Query(..., min_length=1),
-        k: int = Query(default=6, ge=1, le=20)
+        k: int = Query(default=6, ge=1, le=20),
+        current_user: UserInDB = Depends(get_current_user)
 ):
     """
     查询与 q 最近的 k 个向量（文档）
@@ -162,10 +233,18 @@ def search_audio(
     :param request: HTTP 的请求对象
     :param q: 查询键
     :param k: 最邻近的 k 个
+    :param current_user: 当前登录用户
     :return: AudioSearchResp
     """
 
-    docs_scores, allowed = audio_similarity_search(q, k=k)
+    fetch_k = min(min(k * 5, k), 50)                            # todo: fetch_k 待使用
+
+    allowed_vis = compute_user_allowed_visibilities(current_user)
+    allowed_vis_set = set(allowed_vis)
+
+    where = {"visibility": {"$in": allowed_vis}}
+
+    docs_scores = audio_similarity_search(q, k=k, where=where)
 
     base_url = str(request.base_url).rstrip("/")
 
@@ -181,7 +260,7 @@ def search_audio(
         texts = (doc.page_content or "").strip()
 
         if audio_id and end_ms > start_ms:
-            clip_url = f"{base_url}/audio/{audio_id}/clip?start_ms={start_ms}&end_ms={end_ms}"
+            clip_url = _clip_url(base_url, audio_id, start_ms, end_ms)
         else:
             raise HTTPException(status_code=400, detail=f"{audio_id} 不存在或开始时间大于结束时间")
 
@@ -197,7 +276,101 @@ def search_audio(
             )
         )
 
-    return AudioSearchResp(q=q, k=k, allowed_visibilities=allowed, hits=hits)
+    return AudioSearchResp(q=q, k=k, allowed_visibilities=allowed_vis, hits=hits)
+
+
+# todo: 函数优化
+@audio_router.post("/ask", response_model=AudioAskResp)
+def ask_audio(
+        request: Request,
+        req: AudioAskReq,
+        current_user: UserInDB = Depends(get_current_user)
+):
+    """
+
+
+    :param request: FastAPI 的 Request 对象
+    :param req: 请求体的 Model
+    :param current_user: 当前登录用户
+    :return: AudioAskResp
+    """
+
+    question = (req.question or "").strip()
+    k = max(1, min(int(req.k or 6), 20))
+
+    base_url = str(request.base_url).rstrip("/")
+
+    allowed_vis = compute_user_allowed_visibilities(current_user)
+    allowed_vis_set = set(allowed_vis)
+
+    where = {"visibility": {"$in": allowed_vis}}
+    if req.audio_id:
+        where = {"$and": [
+            {"visibility": {"$in": allowed_vis}},
+            {"audio_id": req.audio_id},
+        ]}
+
+    fetch_k = min(max(k * 5, k), 50)            # todo: 参数待使用
+
+    docs_scores = audio_similarity_search(question, k=k, where=where)
+
+    citations: list[AudioCitation] = []
+    seen: set[tuple[str, str, int, int]] = set()
+
+    for doc, score in docs_scores:
+        md = doc.metadata or {}
+        audio_id = str(md.get("audio_id") or "").strip()
+        segment_id = str(md.get("segment_id") or "").strip()
+        start_ms = int(md.get("start_ms") or 0)
+        end_ms = int(md.get("end_ms") or 0)
+
+        # 去重处理
+        key = (audio_id, segment_id, start_ms, end_ms)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        audio_doc = get_audio_document(audio_id)
+        if not audio_doc:
+            raise HTTPException(status_code=409, detail="音频的文档未找到")
+
+        doc_vis = (audio_doc.get("visibility") or "").strip()
+        if doc_vis not in allowed_vis_set:
+            raise HTTPException(status_code=403, detail=f"该{audio_id} 对应的文档该用户无权访问")
+
+        text = (doc.page_content or "").strip()
+        citations.append(
+            AudioCitation(
+                audio_id=audio_id,
+                segment_id=segment_id,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                text=text,
+                clip_url=_clip_url(base_url, audio_id, start_ms, end_ms),
+                score=float(score) if score is not None else None,
+            )
+        )
+        if len(citations) >= k:
+            break
+
+    if not citations:
+        return AudioAskResp(question=question, answer="没有检索到相关音频片段。", citations=[])
+
+    api_key = getattr(settings, "openai_api_key", "") or ""
+    model = getattr(settings, "model_name", "") or "gpt-4o-mini"
+
+    if not api_key:
+        return AudioAskResp(
+            question=question,
+            answer="(未配置 OPENAI_API_KEY) 已返回相关音频片段引用，可先基于citations手动判断。",
+            citations=citations,
+        )
+
+    messages = _build_rag_messages(question, citations, req.system_prompt)
+    answer = _openai_chat_complete(model=model, api_key=api_key, messages=messages, timeout_s=90.0)
+
+    return AudioAskResp(question=question, answer=answer, citations=citations)
+
 
 
 @audio_router.get("/{audio_id}", response_model=AudioDocDetail)

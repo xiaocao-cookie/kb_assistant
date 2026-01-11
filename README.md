@@ -193,19 +193,76 @@ kb_assistant/
 
 ## 其他
 
-例如，修改requirements.txt，添加
-python-multipart==0.0.20
-aiofiles==24.1.0
-streamlit==1.40.2
-
-使用如下命令更新
+使用如下命令更新项目所需软件包
 ```bash
 pip install -U -r requirements.txt
 ```
 
-## 待优化部分
-1. 日期处理不完善
-2. 请假单的数据库设计不完善
-3. ...
+
+## 服务和容器启动命令
+
+使用的docker镜像有
+```bash
+xxx@xxx:~$ sudo docker images
+REPOSITORY                                      TAG              IMAGE ID       CREATED        SIZE
+docker.elastic.co/elasticsearch/elasticsearch   9.2.3            47addb8c32ef   3 weeks ago    1.44GB
+rabbitmq                                        4.2-management   32395d382b4c   3 weeks ago    251MB
+chromadb/chroma                                 latest           0dd8fd5dbbcd   7 weeks ago    580MB
+mysql                                           8                67471052edd5   2 months ago   788MB
+redis                                           7                b4e53bb4637c   3 months ago   117MB
+```
+
+1. fastapi
+```bash
+uvicorn app.main: app --reload --port 8002 
+```
+2. celery
+```bash
+celery -A app.celery_app:celery_app worker -l info -Q audio -c
+```
+3. chromadb
+```bash
+     sudo docker run -d \
+       --name chroma \
+       -p 8000:8000 \
+       -e IS_PERSISTENT=TRUE \                    # 持久化配置
+       -e PERSIST_DIRECTORY=/chroma/chroma \
+       chromadb/chroma 
+```
+4. mysql
+```bash
+sudo docker run \
+    --env=MYSQL_ROOT_PASSWORD=123456 \
+    --network=some-network \
+    -p 3306:3306 \
+    --restart=always \
+    -d mysql:8
+```
+5. RabbitMQ
+```bash
+sudo docker run -d --name rmq \
+      -p 5672:5672 \
+      -p 15672:15672 \
+      -e RABBITMQ_DEFAULT_USER=peter \
+      -e RABBITMQ_DEFAULT_PASS=123456 \
+      rabbitmq:4.2-management 
+```
+6. Redis
+```bash
+sudo docker run --name some-redis \
+      -d -p 6379:6379 \
+      redis:7 redis-server\
+      --save 60 1 \
+      --loglevel warning 
+```
+7. ES
+```bash
+sudo docker run -d --name es01 \
+      -p 9200:9200 \
+      -e "discovery.type=single-node" \
+      -e "xpack.security.enabled=false" \
+      -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
+      docker.elastic.co/elasticsearch/elasticsearch:9.2.3 
+```
 
 

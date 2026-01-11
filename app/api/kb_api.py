@@ -8,7 +8,6 @@ import chromadb
 
 from app.api.auth_api import get_current_user
 from app.model.auth_model import UserInDB
-from app.config import settings
 from app.ingestion.doc_loader import (
     load_single_file,
     split_and_enrich_metadata,
@@ -26,7 +25,6 @@ from app.db_ops.kb_sql import (
     update_kb_document_visibility,
     update_kb_document_chunk_count,
     soft_delete_kb_document,
-    get_allowed_visibilities,
     count_kb_documents
 )
 from app.model.kb_model import (
@@ -36,7 +34,7 @@ from app.model.kb_model import (
     KBDocVisibilityUpdateReq,
     KBDocPageResp
 )
-from app.rag.chroma_admin import (
+from app.service.chroma_kb_service import (
     delete_by_doc_id,
     update_visibility_by_doc_id,
     count_by_doc_id

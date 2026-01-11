@@ -138,3 +138,17 @@ def allowed_kb_visibilities(perms: Iterable[str] | None) -> list[str]:
     return allowed
 
 
+def compute_user_allowed_visibilities(user: UserInDB) -> list[str]:
+    """
+    查询用户允许的可见性
+
+    :param user: 用户
+    :return: 可见性的列表
+    """
+
+    perms = getattr(user, "permissions", None)
+    allowed = allowed_kb_visibilities(perms)
+    if "public" not in allowed:
+        allowed = ["public"] + [x for x in allowed if x != "public"]
+    return allowed
+
