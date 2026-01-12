@@ -31,7 +31,8 @@ def _check_cancel(job_id: str):
         mark_cancelled(job_id)
         raise Ignore()
 
-# todo: 补充文档
+
+# todo: 原理细看
 @celery_app.task(
     bind=True,                                  # 把此函数变为类的实例方法，第一个参数必须是 ⚠️self!!!
     autoretry_for=(IOError, ),                  # todo: 异常优化
@@ -102,4 +103,15 @@ def audio_ingest_task(self, job_id: str, audio_id: str):
 
     return result
 
+
+# todo: 函数待补充
+@celery_app.task(
+    bind=True,
+    autoretry_for=(IOError,),         # todo: 异常优化
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 2},
+)
+def audio_reindex_task(self, job_id: str, audio_id: str):
+    ...
 

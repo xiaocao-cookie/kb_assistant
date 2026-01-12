@@ -1,19 +1,7 @@
 from typing import Any
 
-import chromadb
-
 from app.config import settings
-
-
-def get_collection(collection_name: str = settings.collection_name):
-    """
-    获取/创建 chromadb 中名为 collection_name 的 collection
-
-    :return: Collection
-    """
-    client = chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
-    return client.get_or_create_collection(collection_name)
-
+from app.db_ops.chroma_admin import get_collection, get_client
 
 def delete_by_doc_id(doc_id: str) -> int:
     """
@@ -67,7 +55,7 @@ def update_visibility_by_doc_id(doc_id: str, visibility: str) -> int:
 
     :param doc_id: 文档 ID
     :param visibility: 文档的可见性
-    :return: 影响的数据库行数
+    :return: 影响的数据库行数，即更新的向量数量
     """
     col = get_collection()
     ids, metadatas = get_ids_and_metadatas_by_doc_id(doc_id)
@@ -80,25 +68,3 @@ def update_visibility_by_doc_id(doc_id: str, visibility: str) -> int:
         new_metadatas.append(meta_dict)
     col.update(ids, new_metadatas)
     return len(ids)
-
-
-def delete_by_audio_id(audio_id: str) -> int:
-    """
-    通过 audio_id 从 ChromaDB 中删除对应的音频嵌入向量
-
-    :param audio_id: 音频 ID
-    :return: 删除的向量的嵌入数量
-    """
-
-    col = get_collection(settings.audio_collection_name)
-    try:
-        before = col.count()
-        col.delete(where={"audio_id": audio_id})
-        after = col.count()
-        return max(0, int(before - after))
-    except Exception:
-        got = col.get(where={"audio_id": audio_id})
-        ids = got.get("ids") or []
-        if ids:
-            col.delete(ids=ids)
-        return len(ids)

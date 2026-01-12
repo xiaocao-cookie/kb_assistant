@@ -67,9 +67,6 @@ audio_router = APIRouter(
 )
 
 
-# todo: 此模块考虑添加一个 音频知识库 重建功能
-
-
 def _clip_url(
         base: str,
         audio_id: str,

@@ -1,5 +1,7 @@
+from typing import Iterable, Any
+
 from app.config import settings
-from app.utils.chroma_admin import get_collection
+from app.db_ops.chroma_admin import get_collection
 
 
 def delete_by_audio_id(audio_id: str) -> int:
@@ -22,3 +24,46 @@ def delete_by_audio_id(audio_id: str) -> int:
         if ids:
             col.delete(ids=ids)
         return len(ids)
+
+
+def update_visibility_by_audio_id(audio_id: str, visibility: str) -> int:
+    """
+    根据 audio_id 更新音频的可见性
+
+    :param audio_id: 音频 ID
+    :param visibility: 音频的可见性
+    :return: 影响的数据库行数，即更新的向量数量
+    """
+
+    col = get_collection(settings.audio_collection_name)
+    got = col.get(where={"audio_id": audio_id}, include=["metadatas"])
+    ids = got.get("ids") or []
+    metas = got.get("metadatas") or []
+    if not ids:
+        return 0
+    new_metas: list[dict[str, Any]] = []
+    for m in metas:
+        mm = dict(m or {})
+        mm["visibility"] = visibility
+        new_metas.append(mm)
+    col.update(ids=ids, metadatas=new_metas)
+    return len(ids)
+
+
+def delete_many_audio_ids(audio_ids: Iterable[str]) -> dict[str, int]:
+    """
+    根据 audio_ids 中的音频 ID 批量删除向量数据库中的音频向量
+
+    :param audio_ids: audio_id 的可迭代对象
+    :return: 字典，每一项的键是 audio_id, 值是对应删除的向量数量
+    """
+    out: dict[str, int] = {}
+    for aid in audio_ids:
+        aid = (aid or "").strip()
+        if not aid:
+            continue
+        try:
+            out[aid] = int(delete_by_audio_id(aid))
+        except Exception:
+            out[aid] = 0
+    return out

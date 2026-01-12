@@ -13,6 +13,7 @@ from app.api.auth_api import auth_router
 from app.api.rbac_api import rbac_roles_router, rbac_users_router
 from app.api.kb_api import kb_router
 from app.api.audio_api import audio_router
+from app.api.audio_admin_api import audio_admin_router
 
 
 app = FastAPI(title="Enterprise KB Assistant")
@@ -21,6 +22,7 @@ app.include_router(rbac_roles_router)
 app.include_router(rbac_users_router)
 app.include_router(kb_router)
 app.include_router(audio_router)
+app.include_router(audio_admin_router)
 
 
 app.add_middleware(
