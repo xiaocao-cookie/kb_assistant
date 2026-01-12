@@ -1,6 +1,6 @@
 from app.deps import get_audio_vs
 
-#  todo: 函数的用法待优化
+
 def audio_similarity_search(query: str, *, k: int = 6, where: dict | None = None):
     """
     搜索与 query 最近的 k 个向量(文档)

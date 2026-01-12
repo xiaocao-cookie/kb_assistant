@@ -16,6 +16,7 @@ class Setting(BaseModel):
     openai_api_key: str = os.getenv("DEEPSEEK_API_KEY", "")
     zhipu_api_key: str = os.getenv("ZHIPUAI_API_KEY", "")
     model_name: str = os.getenv("MODEL_NAME", "deepseek-chat")
+    deepseek_reasoner_model: str = os.getenv("REASONER_MODEL", "deepseek-reasoner")
 
     # ================= chroma数据库 =========================
     chroma_dir: str = os.getenv("CHROMA_DIR", "./data/chroma")

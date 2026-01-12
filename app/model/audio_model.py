@@ -38,7 +38,7 @@ class AudioSearchHit(BaseModel):
     score: Optional[float] = None
     clip_url: Optional[str] = None              # 可供用户下载的链接
 
-# todo: 考虑 allowed_visibilities 的合理性
+
 class AudioSearchResp(BaseModel):
     """ 音频搜索的响应体 """
     q: str
@@ -66,7 +66,7 @@ class AudioAskReq(BaseModel):
 
 
 class AudioCitation(BaseModel):
-    """  """
+    """ 音频的引用模型 """
     audio_id: str
     segment_id: str
     start_ms: int

@@ -54,6 +54,7 @@ from app.model.audio_model import AudioIngestAsyncResp
 from app.model.audio_job_model import AudioJobResp
 from app.utils.path_utils import ensure_dir
 from app.utils.visibility_validation import parse_visibility
+from app.utils.completion import deepseek_chat_completion
 
 
 audio_router = APIRouter(
@@ -79,27 +80,19 @@ def _clip_url(
     return f"{base}/audio/docs/{audio_id}/clip?start_ms={start_ms}&end_ms={end_ms}"
 
 
-def _openai_chat_complete(*, model: str, api_key: str, messages: list[dict[str, str]], timeout_s: float = 60.0) -> str:
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": 0.2,
-    }
-    with httpx.Client(timeout=timeout_s) as client:
-        r = client.post(url, headers=headers, json=payload)
-        if r.status_code >= 400:
-            raise HTTPException(status_code=500, detail=f"OpenAI error: {r.status_code} {r.text[:300]}")
-        data = r.json()
-    try:
-        return (data["choices"][0]["message"]["content"] or "").strip()
-    except Exception:
-        raise HTTPException(status_code=500, detail="OpenAI response parse error")
+def _build_rag_messages(question: str,
+                        citations: list[AudioCitation],
+                        system_prompt: Optional[str]
+                        ) -> list[dict[str, str]]:
+    """
+    构造用于 RAG 场景的 messages
 
+    :param question: 用户询问的问题
+    :param citations: 检索出的音频片段信息
+    :param system_prompt: 系统提示词
+    :return: LLM 的 messages
+    """
 
-def _build_rag_messages(question: str, citations: list[AudioCitation], system_prompt: Optional[str]) -> list[
-    dict[str, str]]:
     sys = (system_prompt or "").strip() or (
         "你是企业知识库助手，回答必须基于给定的【音频片段】内容。"
         "如果片段不足以回答，就明确说“不确定/片段中没有”。"
@@ -128,6 +121,7 @@ def _build_rag_messages(question: str, citations: list[AudioCitation], system_pr
         {"role": "system", "content": sys},
         {"role": "user", "content": user},
     ]
+
 
 @audio_router.post("/ingest", response_model=AudioIngestAsyncResp)
 async def ingest_audio(
@@ -219,7 +213,6 @@ async def ingest_audio(
     )
 
 
-# todo: 函数优化
 @audio_router.get("/query", response_model=AudioSearchResp)
 def query_audio(
         request: Request,
@@ -228,7 +221,8 @@ def query_audio(
         current_user: UserInDB = Depends(get_current_user)
 ):
     """
-    查询与 q 最近的 k 个向量（文档）
+    查询与 q 最近的 fetch_k 个向量（文档）
+    fetch_k 的计算公式为： $ min(max(k * 5, k), 50) $
 
     :param request: HTTP 的请求对象
     :param q: 查询键
@@ -237,24 +231,25 @@ def query_audio(
     :return: AudioSearchResp
     """
 
-    fetch_k = min(min(k * 5, k), 50)                            # todo: fetch_k 待使用
+    fetch_k = min(max(k * 5, k), 50)
 
     allowed_vis = compute_user_allowed_visibilities(current_user)
     allowed_vis_set = set(allowed_vis)
 
     where = {"visibility": {"$in": allowed_vis}}
 
-    docs_scores = audio_similarity_search(q, k=k, where=where)
+    docs_scores = audio_similarity_search(q, k=fetch_k, where=where)
 
     base_url = str(request.base_url).rstrip("/")
 
     hits: list[AudioSearchHit] = []
+    seen: set[tuple[str, str, int, int]] = set()
 
     for doc, score in docs_scores:
         m = doc.metadata or {}
 
-        audio_id = str(m.get("audio_id", "") or "")
-        segment_id = str(m.get("segment_id", "") or "")
+        audio_id = str(m.get("audio_id", "") or "").strip()
+        segment_id = str(m.get("segment_id", "") or "").strip()
         start_ms = int(m.get("start_ms", 0) or 0)
         end_ms = int(m.get("end_ms", 0) or 0)
         texts = (doc.page_content or "").strip()
@@ -262,7 +257,20 @@ def query_audio(
         if audio_id and end_ms > start_ms:
             clip_url = _clip_url(base_url, audio_id, start_ms, end_ms)
         else:
-            raise HTTPException(status_code=400, detail=f"{audio_id} 不存在或开始时间大于结束时间")
+            continue
+
+        key = (audio_id, segment_id, start_ms, end_ms)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        audio_doc = get_audio_document(audio_id)
+        if not audio_doc:
+            continue
+
+        doc_vis = (audio_doc.get("visibility") or "").strip().lower()
+        if doc_vis not in allowed_vis_set:
+            continue
 
         hits.append(
             AudioSearchHit(
@@ -275,11 +283,12 @@ def query_audio(
                 clip_url=clip_url
             )
         )
+        if len(hits) >= k:
+            break
 
     return AudioSearchResp(q=q, k=k, allowed_visibilities=allowed_vis, hits=hits)
 
 
-# todo: 函数优化
 @audio_router.post("/ask", response_model=AudioAskResp)
 def ask_audio(
         request: Request,
@@ -287,7 +296,19 @@ def ask_audio(
         current_user: UserInDB = Depends(get_current_user)
 ):
     """
+    使用 req 中的参数调用 LLM 生成回复
+    req 中包含：
+         1. question: 用户询问的问题
+         2. k: 最邻近的 k 个向量
+         3. audio_id: 音频 ID
+         4. system_prompt: 系统的提示词
 
+    这里有一点需要说明的是：
+    在向量的相似性搜索下，这里搜索的是与 question 最相关的 **fetch_k** 个向量，且指定仅搜索 audio_id下的向量
+    其中，fetch_k 的计算公式如下：
+        $$
+            fetch_k = min(max(k * 5, k), 50)
+        $$
 
     :param request: FastAPI 的 Request 对象
     :param req: 请求体的 Model
@@ -296,7 +317,7 @@ def ask_audio(
     """
 
     question = (req.question or "").strip()
-    k = max(1, min(int(req.k or 6), 20))
+    k = req.k
 
     base_url = str(request.base_url).rstrip("/")
 
@@ -310,9 +331,9 @@ def ask_audio(
             {"audio_id": req.audio_id},
         ]}
 
-    fetch_k = min(max(k * 5, k), 50)            # todo: 参数待使用
+    fetch_k = min(max(k * 5, k), 50)
 
-    docs_scores = audio_similarity_search(question, k=k, where=where)
+    docs_scores = audio_similarity_search(question, k=fetch_k, where=where)
 
     citations: list[AudioCitation] = []
     seen: set[tuple[str, str, int, int]] = set()
@@ -332,11 +353,11 @@ def ask_audio(
 
         audio_doc = get_audio_document(audio_id)
         if not audio_doc:
-            raise HTTPException(status_code=409, detail="音频的文档未找到")
+            continue
 
         doc_vis = (audio_doc.get("visibility") or "").strip()
         if doc_vis not in allowed_vis_set:
-            raise HTTPException(status_code=403, detail=f"该{audio_id} 对应的文档该用户无权访问")
+            continue
 
         text = (doc.page_content or "").strip()
         citations.append(
@@ -356,8 +377,8 @@ def ask_audio(
     if not citations:
         return AudioAskResp(question=question, answer="没有检索到相关音频片段。", citations=[])
 
-    api_key = getattr(settings, "openai_api_key", "") or ""
-    model = getattr(settings, "model_name", "") or "gpt-4o-mini"
+    api_key = settings.openai_api_key
+    model = settings.model_name
 
     if not api_key:
         return AudioAskResp(
@@ -367,7 +388,14 @@ def ask_audio(
         )
 
     messages = _build_rag_messages(question, citations, req.system_prompt)
-    answer = _openai_chat_complete(model=model, api_key=api_key, messages=messages, timeout_s=90.0)
+    answer = deepseek_chat_completion(
+        model=model,
+        api_key=api_key,
+        temperature=0,
+        messages=messages,
+        timeout_s=90.0,
+        stream=True
+    )
 
     return AudioAskResp(question=question, answer=answer, citations=citations)
 
@@ -389,7 +417,6 @@ def get_audio(audio_id: str):
     return row
 
 
-# todo: 此函数文档说明
 @audio_router.get("/{audio_id}/clip")
 def get_audio_clip(
         audio_id: str,
@@ -400,11 +427,11 @@ def get_audio_clip(
         segment_id: Optional[str] = Query(default=None)
 ):
     """
-    通过 audio_id 查询音频
+    首先，通过 audio_id 查询音频
     接下来，
         - 如果segment_id 给出，将这段音频按照 segment_id 裁剪成 MP3
         - 如果 segment_id 未给出，则根据 start_ms 和 end_ms 裁剪音频，最大裁剪时长由 max_clip_ms 指定
-    最终，裁剪成功并且在服务端发出响应之后进行 background_tasks
+    最后，裁剪成功并且在服务端发出响应之后进行 background_tasks
 
 
     :param audio_id: 音频 ID
