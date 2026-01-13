@@ -6,20 +6,6 @@ from fastapi import HTTPException
 
 from app.config import settings
 
-# model参数
-# 模型	        deepseek-chat	      deepseek-reasoner
-# 模型版本	  DeepSeek-V3.2-Exp       DeepSeek-V3.2-Exp
-#               （非思考模式）             （思考模式）
-
-
-# temperature 参数默认为0.1
-# 场景	                        温度
-# 代码生成/数学解题             	0.0
-# 数据抽取/分析	                1.0
-# 通用对话	                    1.3
-# 翻译	                        1.3
-# 创意类写作/诗歌创作	            1.5
-
 
 def deepseek_chat_completion(*,
                              model: str = settings.model_name,

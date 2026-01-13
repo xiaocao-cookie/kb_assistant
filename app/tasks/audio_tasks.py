@@ -104,7 +104,6 @@ def audio_ingest_task(self, job_id: str, audio_id: str):
     return result
 
 
-# todo: 函数待补充
 @celery_app.task(
     bind=True,
     autoretry_for=(IOError,),         # todo: 异常优化
@@ -113,5 +112,57 @@ def audio_ingest_task(self, job_id: str, audio_id: str):
     retry_kwargs={"max_retries": 2},
 )
 def audio_reindex_task(self, job_id: str, audio_id: str):
-    ...
+    """
+    根据调用 /docs/{audio_id}/reindex 生成的 job_id 和 audio_id(前端传递) 异步的对音频进行重嵌入，音频信息会同步到 chroma 和 MySql 中
+
+    :param self: 类实例方法的第一个参数，与装饰器中的 bind=True 联用
+    :param job_id: 任务 ID
+    :param audio_id: 音频 ID
+    """
+
+    update_job(job_id, status=AudioJobStatus.RUNNING, progress=1, message="开始重嵌入...")
+    update_audio_status(audio_id, status=AudioJobStatus.RUNNING)
+
+    _check_cancel(job_id)
+
+    doc = get_audio_document(audio_id)
+    if not doc:
+        raise RuntimeError(f"音频 ID {audio_id} 对应的文档未找到")
+
+    raw_path = Path(doc["stored_path"])
+    if not raw_path.exists():
+        raise RuntimeError("存储路径不存在")
+
+    update_job(job_id, progress=5, message="清除旧的向量...")
+    delete_by_audio_id(audio_id)
+
+    _check_cancel(job_id)
+
+    update_job(job_id, progress=10, message="转录/嵌入中...")
+    results = run_audio_ingest_pipeline(
+        audio_id=audio_id,
+        raw_path=raw_path,
+        original_filename=doc["original_filename"],
+        visibility=doc["visibility"],
+        language=doc.get("language"),
+        wav_dir=Path(settings.AUDIO_WAV_DIR),
+    )
+
+    _check_cancel(job_id)
+
+    update_audio_indexed(
+        audio_id=audio_id,
+        duration_ms=int(results["duration_ms"]),
+        language=results.get("language"),
+        segment_count=int(results["segments"]),
+        status="indexed",
+    )
+
+    update_job(
+        job_id,
+        status=AudioJobStatus.SUCCEEDED,
+        progress=100,
+        message=f"重嵌入了 {results['segments']} 个分段"
+    )
+    return results
 

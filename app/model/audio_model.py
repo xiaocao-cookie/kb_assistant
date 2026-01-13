@@ -34,7 +34,7 @@ class AudioSearchHit(BaseModel):
     segment_id: str
     start_ms: int
     end_ms: int
-    texts: str
+    text: str
     score: Optional[float] = None
     clip_url: Optional[str] = None              # 可供用户下载的链接
 

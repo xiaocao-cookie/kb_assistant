@@ -247,6 +247,7 @@ sudo docker run -d --name rmq \
       -e RABBITMQ_DEFAULT_PASS=123456 \
       rabbitmq:4.2-management 
 ```
+
 6. Redis
 ```bash
 sudo docker run --name some-redis \
@@ -255,6 +256,18 @@ sudo docker run --name some-redis \
       --save 60 1 \
       --loglevel warning 
 ```
+
+
+运行 7 和 8 之前需创建一个网络，且 ES 必须和 kibana 在同一个网络下
+```bash
+sudo docker network create some-network
+```
+之后执行
+```bash
+sudo docker network connect some-network es01
+sudo docker network connect some-network kibana01
+```
+
 7. ES
 ```bash
 sudo docker run -d --name es01 \
@@ -265,4 +278,12 @@ sudo docker run -d --name es01 \
       docker.elastic.co/elasticsearch/elasticsearch:9.2.3 
 ```
 
+8. kibana
+```bash
+sudo docker run -d --name kibana01 \
+      --link es01:elasticsearch \           # 需开启 es01 容器
+      -p 5601:5601 \
+      -e "ELASTICSEARCH_HOSTS=http://elasticsearch:9200" \
+      docker.elastic.co/kibana/kibana:9.2.3
+```
 

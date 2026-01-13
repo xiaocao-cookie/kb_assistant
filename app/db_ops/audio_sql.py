@@ -74,7 +74,7 @@ def replace_audio_segments(audio_id: str, segments: list[dict[str, Any]]) -> Non
             cur.execute("DELETE FROM audio_segments WHERE audio_id=%s", (audio_id,))
             if segments:
                 cur.executemany(
-                    "INSERT INTO audio_segments (audio_id, segment_idx, start_ms, end_ms, texts) VALUES (%s,%s,%s,%s,%s)",
+                    "INSERT INTO audio_segments (audio_id, segment_idx, start_ms, end_ms, text) VALUES (%s,%s,%s,%s,%s)",
                     [
                         (audio_id, int(s["segment_idx"]), int(s["start_ms"]), int(s["end_ms"]), s["text"])
                         for s in segments
@@ -110,6 +110,36 @@ def delete_audio_document(audio_id: str) -> int:
             return int(cur.rowcount or 0)
 
 
+def delete_audio_document_cascade(audio_id: str) -> dict[str, int]:
+    """
+    根据 audio_id 级联删除对应音频的文档，与该音频对应的任务以及音频的分段信息
+
+    :param audio_id: 音频 ID
+    :return: 字典
+        {
+        "documents": doc_n,  表示删除相关联的音频文档数为 doc_n 个
+        "segments": seg_n,   表示删除相关联的音频分段数为 seg_n 个
+        "jobs": job_n        表示删除相关联的音频任务数为 job_n 个
+        }
+    """
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM audio_segments WHERE audio_id=%s", (audio_id,))
+            seg_n = int(cur.rowcount or 0)
+
+            try:
+                cur.execute("DELETE FROM audio_jobs WHERE audio_id=%s", (audio_id,))
+                job_n = int(cur.rowcount or 0)
+            except Exception:
+                job_n = 0
+
+            cur.execute("DELETE FROM audio_documents WHERE audio_id=%s", (audio_id,))
+            doc_n = int(cur.rowcount or 0)
+
+    return {"documents": doc_n, "segments": seg_n, "jobs": job_n}
+
+
 def get_audio_document(audio_id: str) -> Optional[dict[str, Any]]:
     """
     通过 audio_id 在 audio_documents 表中查询对应音频的相关信息
@@ -138,7 +168,7 @@ def get_audio_segment(audio_id: str, segment_idx: int):
     :return: 音频信息
     """
     sql = """
-          SELECT audio_id, segment_idx, start_ms, end_ms, texts 
+          SELECT audio_id, segment_idx, start_ms, end_ms, text 
           FROM audio_segments WHERE audio_id=%s AND segment_idx=%s LIMIT 1
           """
     with get_conn() as conn:
@@ -197,6 +227,19 @@ def get_audio_transcript(audio_id: str, *, max_segments: int = 5000) -> str:
         lines.append(f"[{s['segment_idx']}] {s['text']}")
     return "\n".join(lines)
 
+
+def get_audio_transcript86(audio_id: str) -> dict[str, Any]:
+    segs = list_audio_segments(audio_id)
+    lines: list[str] = []
+    for s in segs:
+        t = (s.get("text") or "").strip()
+        if t:
+            lines.append(t)
+    return {
+        "audio_id": audio_id,
+        "segment_count": len(segs),
+        "transcript": "\n".join(lines),
+    }
 
 def get_audio_stats() -> dict[str, Any]:
     """

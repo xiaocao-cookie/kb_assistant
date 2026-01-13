@@ -1,7 +1,8 @@
 from typing import Any
 
 from app.config import settings
-from app.db_ops.chroma_admin import get_collection, get_client
+from app.db_ops.chroma_admin import get_collection, get_client, delete_vectors_by_where
+
 
 def delete_by_doc_id(doc_id: str) -> int:
     """
@@ -11,17 +12,8 @@ def delete_by_doc_id(doc_id: str) -> int:
     :return: 删除的向量的嵌入数量
     """
     col = get_collection()
-    try:
-        before = col.count()
-        col.delete(where={"doc_id": doc_id})
-        after = col.count()
-        return max(0, int(before - after))
-    except Exception:
-        got = col.get(where={"doc_id": doc_id})
-        ids = got.get("ids") or []
-        if ids:
-            col.delete(ids=ids)
-        return len(ids)
+    where = {"doc_id": doc_id}
+    return delete_vectors_by_where(collection=col, where=where)
 
 
 def get_ids_and_metadatas_by_doc_id(doc_id: str) -> tuple[list[str], list[dict[str, Any]]]:
