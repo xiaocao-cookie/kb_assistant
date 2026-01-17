@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Iterable, Any
 import uuid
 import time
 import httpx
@@ -15,8 +15,10 @@ from fastapi import (APIRouter,
                      Request)
 from fastapi.responses import FileResponse
 from langchain_core.documents import Document
+from langchain.messages import SystemMessage, HumanMessage
+from starlette.responses import StreamingResponse
 
-from app.deps import get_audio_vs
+from app.deps import get_audio_vs, get_llm
 from app.service.rbac_service import (
     require_permission,
     get_current_user,
@@ -118,6 +120,124 @@ def _build_rag_messages(question: str,
         {"role": "system", "content": sys},
         {"role": "user", "content": user},
     ]
+
+
+def _build_langchain_messages(messages: list[dict[str, str]]) -> list[Any]:
+    """
+
+
+    :param messages:
+    :return:
+    """
+    msg_ls = []
+    for m in messages:
+        role = m.get("role", "")
+        content = m.get("content", "")
+        msg_ls.append(
+            SystemMessage(content=content) if role == "system" else HumanMessage(content=content)
+        )
+    return msg_ls
+
+
+def _openai_chat_complete(*, messages: list[dict[str, str]]) -> str:
+    """
+
+
+    :param messages:
+    :return:
+    """
+    llm = get_llm()
+    try:
+        result = llm.invoke(_build_langchain_messages(messages))
+        return (result.content or "").strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM 调用出错： {e}")
+
+
+def _openai_stream(*, messages: list[dict[str, str]]) -> Iterable[str]:
+    """
+
+
+    :param messages:
+    :return:
+    """
+
+    llm = get_llm()
+    try:
+        for chunk in llm.stream(_build_langchain_messages(messages)):
+            if chunk.content:
+                yield chunk.content
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM 流式调用出错: {e}")
+
+
+def _search_audio_segments(vs, query: str, allowed_vis: list[str], k: int, audio_id: Optional[str] = None) -> tuple:
+    """
+    使用 vs 查询与 query 最近的 fetch_k（fetch_k = min(max(k * 5, k), 50)） 个向量，并使用 allowed_vis 和 audio_id 条件过滤
+
+    :param vs: 向量存储
+    :param query: 查询的键
+    :param allowed_vis: 允许的可见性
+    :param k: 最近的 k 个向量
+    :param audio_id: 音频 ID
+    :return: 一个元组（docs, score）
+    """
+    where = {"visibility": {"$in": allowed_vis}}
+    if audio_id:
+        where = {"$and": [{"visibility": {"$in": allowed_vis}}, {"audio_id": audio_id}]}
+    fetch_k = min(max(k * 5, k), 50)
+    return vs.similarity_search_with_score(query, k=fetch_k, filter=where)
+
+
+def _build_audio_hits(docs_scores, allowed_vis_set: set[str], base: str, mode: str = "hit") -> list:
+    """
+
+
+    :param docs_scores: 最相近的文档和分数
+    :param allowed_vis_set: 允许可见性的集合
+    :param base: fastAPI 的基础路径，请求体的base_url,此项目中是 http://localhost:8002
+    :param mode: 模式，默认 hit
+    :return: 音频命中模型或音频引用模型的列表
+    """
+
+    results, seen = [], set()
+    for doc, score in docs_scores:
+        md = doc.metadata or {}
+        audio_id = str(md.get("audio_id") or "").strip()
+        segment_id = str(md.get("segment_id") or "").strip()
+        if not (audio_id and segment_id):
+            continue
+        try:
+            start_ms, end_ms = int(md.get("start_ms", 0)), int(md.get("end_ms", 0))
+        except Exception:
+            continue
+        if start_ms < 0 or end_ms <= start_ms:
+            continue
+        key = (audio_id, segment_id, start_ms, end_ms)
+        if key in seen:
+            continue
+        seen.add(key)
+        db_doc = get_audio_document(audio_id)
+        if not db_doc:
+            continue
+        if (db_doc.get("visibility") or "").strip().lower() not in allowed_vis_set:
+            continue
+        text = (doc.page_content or "").strip()
+        if mode == "hit":  # hit搜索结果列表/query，返回AudioSearchHit
+            results.append(AudioSearchHit(
+                audio_id=audio_id, segment_id=segment_id,
+                start_ms=start_ms, end_ms=end_ms, text=text,
+                score=float(score) if score is not None else None,
+                clip_url=_clip_url(base, audio_id, start_ms, end_ms)
+            ))
+        else:  # citation问答引用/ask/stream接口，结果是AudioCitation
+            results.append(AudioCitation(
+                audio_id=audio_id, segment_id=segment_id,
+                start_ms=start_ms, end_ms=end_ms, text=text,
+                clip_url=_clip_url(base, audio_id, start_ms, end_ms),
+                score=float(score) if score is not None else None
+            ))
+    return results
 
 
 @audio_router.post("/ingest", response_model=AudioIngestAsyncResp)
@@ -396,6 +516,50 @@ def ask_audio(
 
     return AudioAskResp(question=question, answer=answer, citations=citations)
 
+
+@audio_router.post("/ask/stream")
+def ask_audio_stream(
+        req: dict,
+        request: Request,
+        current_user: UserInDB = Depends(get_current_user),
+):
+    """
+    用户询问问题之后，流式输出结果
+
+    :param req: 用户的请求内容
+    :param request: FastAPI 的 request 对象
+    :param current_user: 当前登录的用户
+    """
+
+    question = (req.get("question") or "").strip()
+    audio_id = req.get("audio_id")
+    k = max(1, min(int(req.get("k") or 6), 20))
+
+    if not question:
+        raise HTTPException(status_code=400, detail="问题为空")
+
+    vs = get_audio_vs()
+    allowed_vis = compute_user_allowed_visibilities(current_user)
+    allowed_vis_set = set(allowed_vis)
+    base_url = str(request.base_url)
+
+    docs_scores = _search_audio_segments(vs, question, allowed_vis, k, audio_id)
+    citations = _build_audio_hits(docs_scores, allowed_vis_set, base_url, mode="citation")
+
+    messages = _build_rag_messages(question, citations, None)
+
+    def event_stream():
+        yield f"event: meta\ndata: { {'question': question, 'citations': [c.model_dump() for c in citations]} }\n\n"
+        for chunk in _openai_stream(messages=messages):
+            yield f"event: token\ndata: {chunk}\n\n"
+        yield "event: done\ndata: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@audio_router.get("/search", response_model=AudioSearchResp)
+def search_audio(*args, **kwargs):
+    return query_audio(*args, **kwargs)
 
 
 @audio_router.get("/{audio_id}", response_model=AudioDocDetail)
